@@ -1,7 +1,7 @@
 " {{{ New_adjustment ❯
 function! New_adjustment(...)
   if len(a:) < 5 | let group = Get_group() | else | let group = get(a:, 1) | endif
-  let attributes = Get_attributes()
+  let attributes = Get_attributes(l:group)
   let alteration_file = g:swatch_dir . 'alterations/'
         \. (exists('g:colors_name') ? g:colors_name : 'default')
         \. '.vim'
@@ -18,35 +18,45 @@ function! New_adjustment(...)
   else
     exe bufwinnr(alteration_file) . 'wincmd w'
   endif
-  silent if !search(l:group, 'n')
-    echo [fg, bg, style]
-    call append(0, 
-          \['"{{{ ' . l:group    ] +
-          \['hi ' . l:group      ] +
-          \['    \ gui=' . l:style] +
-          \['    \ guifg=' . l:fg ] +
-          \['    \ guibg=' . l:bg ] +
-          \['"}}} ' . l:group    ]
-          \)
-  normal zMgg
-  call search(group)
-  normal zv3j
-  endif
 
+  silent if !search(l:group, 'n')
+    call Insert_group(group, attributes)
+    normal zMgg
+    call search(group)
+    normal zv3j
+  endif
 endfunction
 " }}} New_adjustment ❮
+" {{{ Insert_group ❯
+function! Insert_group(group, attributes)
+  let [fg, bg, styles] = [
+        \a:attributes[0], 
+        \a:attributes[1], 
+        \Style_decode(a:attributes[2])
+        \]
+  let [fg, bg, styles] = map([fg, bg, styles], {k,v -> v == '' ? 'none' : v})
+  call append(0, 
+        \['"{{{ ' . a:group      ] +
+        \['hi ' . a:group        ] +
+        \['    \ gui=' . l:styles] +
+        \['    \ guifg=' . l:fg  ] +
+        \['    \ guibg=' . l:bg  ] +
+        \['"}}} ' . a:group      ]
+        \)
+endfunction
+" }}} Insert_group ❮
 " {{{ Get_attributes ❯
+" return looks like ['fg', 'bg', 'styles']
 function! Get_attributes(group)
-  let hlID = hlID(group)
-  let [fg, bg, style] = [
-        \[
-        \synIDattr(hlID, 'bold') == 1 ? 1 : 0, 
-        \synIDattr(hlID, 'italic') == 1 ? 1 : 0,
+  let hlID = hlID(a:group)
+  return [
+        \synIDattr(hlID, 'fg#'),
+        \synIDattr(hlID, 'bg#'),
+        \[(synIDattr(hlID, 'bold') == 1 ? 1 : 0), 
+        \(synIDattr(hlID, 'italic') == 1 ? 1 : 0),
         \(synIDattr(hlID, 'undercurl') == 1 ? 2 :
         \(synIDattr(hlID, 'underline') == 1 ? 1 : 0)
-        \)],
-        \synIDattr(hlID, 'fg#'),
-        \synIDattr(hlID, 'bg#')
+        \)]
         \]
 endfunction
 " }}} Get_attributes ❮
@@ -56,11 +66,11 @@ endfunction
 " }}} Style_encode ❮
 " {{{ Style_decode ❯
 function! Style_decode(tally)
-  let style_string =
-    \ (tally[0] == 1 ? 'bold,'      : '') .
-    \ (tally[1] == 1 ? 'italic,'    : '') .
-    \ (tally[2] == 1 ? 'underline,' : '') .
-    \ (tally[2] == 2 ? 'undercurl,' : '')
+  return
+    \ (a:tally[0] == 1 ? 'bold,'      : '') .
+    \ (a:tally[1] == 1 ? 'italic,'    : '') .
+    \ (a:tally[2] == 1 ? 'underline,' : '') .
+    \ (a:tally[2] == 2 ? 'undercurl,' : '')
 endfunction
 " }}} Style_decode ❮
 " {{{ Insert_template ❯
@@ -94,27 +104,82 @@ endfunction
 " {{{ Adjust_Levels ❯
 function! Adjust_Levels(channel, delta, ...)
   let a:audit = get(a:, 1, v:true)
-  let g:in_visual = get(a:, 2, v:false)
+  let s:in_visual = get(a:, 2, v:false)
 
   if a:audit == v:true
-    call Audit()
+    call Audit(a:channel, a:delta)
   else
   endif
 endfunction
 " }}} Adjust_Levels ❮
+" {{{ Get_last ❯
+function! Get_last(value)
+  if a:value == 'trigger_line'
+    return s:last_hidef_line
+  elseif a:value == 'cursor_line'
+    return s:last_cursor_line
+  endif
+endfunction
+" }}} Get_last ❮
+" {{{ Set_last ❯
+function! Set_last(value)
+  if a:value == 'hidef_line'
+    let s:last_hidef_line = line('.')
+  elseif a:value == 'cursor_line'
+    let s:last_cursor_line = line('.')
+  endif
+endfunction
+" }}} Set_last ❮
+" {{{ Get_current_line ❯
+function! Get_current_line()
+  return line('.')
+endfunction
+" }}} Get_current_line ❮
 " {{{ Audit ❯
-function! Audit()
+function! Audit(channel, delta)
   if On('hidef')
-    echo 'on hidef'
-  elseif g:in_visual == v:true
-    echo 'in visual'
+    let s:context = 'hidef'
+    call Audit_for_hidef(a:channel, a:delta)
+  elseif s:in_visual == v:true
+    let s:context = 'in_visual'
+    call Audit_for_preview(a:channel, a:delta)
   elseif On('hex')
-    echo 'on hex'
+    let s:context = 'hex'
+    call Audit_for_hex(a:channel, a:delta)
   else
-    echo 'on none'
+    echo 'on nothing'
   endif
 endfunction
 " }}} Audit ❮
+" {{{ Audit_for_hidef ❯
+function! Audit_for_hidef(channel, delta)
+  if Get_last('trigger_line') == Get_current_line()
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
+  else
+    call Set_last('trigger_line')
+    call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
+  endif
+endfunction
+" }}} Audit_for_hidef ❮
+" {{{ Audit_for_hex ❯
+function! Audit_for_hex()
+  if Get_last('trigger_line') == Get_current_line()
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
+  else
+    call Set_last('trigger_line')
+    call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
+  endif
+endfunction
+" }}} Audit_for_hex ❮
+" {{{ Audit_for_preview ❯
+function! Audit_for_preview(...)
+  if Get_last('trigger_line') == Get_current_line()
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'preview')
+  else
+    echo 'No color selected'
+  endif
+endfunction
+" }}} Audit_for_preview ❮
 " {{{ On ❯
 function! On(thing)
   let line = getline('.')
@@ -177,7 +242,9 @@ endfunction
 " }}} Get_group ❮
 
 " {{{ Variables ❯
-let g:in_visual = v:false
+let s:last_hidef_line = 0
+let s:last_cursor_line = 0
+let s:in_visual = v:false
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
 " }}} Variables ❮
 
