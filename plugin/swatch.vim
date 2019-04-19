@@ -1,9 +1,127 @@
-" {{{ vimFuncBody
-hi vimFuncBody
-    \ gui=none
-    \ guifg=#chngme
-    \ guibg=none
-" }}} vimFuncBody
+" {{{ Adjust_Levels ❯
+function! Adjust_Levels(channel, delta, ...)
+  let a:audit = get(a:, 1, v:true)
+  let s:in_visual = get(a:, 2, v:false)
+
+  if a:audit == v:true
+    call Audit(a:channel, a:delta)
+  else
+    if s:context == 'hidef'
+      let group = Get_group('hidef')
+      call Position_cursor('hidef')
+      let key = Get_hidef('key') | let value = Get_hidef('value')
+      if key == 'gui'
+        let new_style_string = Transform_style(value, a:channel, a:delta)
+        call Apply_style(group, key, new_style_string)
+        call Replace_hidef(key, new_style_string)
+      else
+        let new_hex = Transform_hex(value, a:channel, a:delta)
+        call Apply_style(group, key, new_hex)
+        call Replace_hidef(key, new_hex)
+      endif
+    elseif s:context == 'hex'
+      call Position_cursor('hex')
+      let hex = Get_hex() | let new_hex = Transform_hex(hex, a:channel, a:delta)
+      call Replace_hex(hex, new_hex)
+      call Preview_hex(new_hex)
+    elseif s:context == 'in_visual'
+      call Position_cursor('in_visual')
+      let hex = Get_hex() | let new_hex = Transform_hex(hex, a:channel, a:delta)
+      call Replace_hex(hex, new_hex)
+      call Preview_hex(new_hex)
+    endif
+  endif
+endfunction
+" }}} Adjust_Levels ❮
+" {{{ Audit ❯
+function! Audit(channel, delta)
+  if s:in_visual == v:true
+    let s:context = 'in_visual'
+    call Audit_for_preview(a:channel, a:delta)
+  elseif On('hidef')
+    let s:context = 'hidef'
+    call Audit_for_hidef(a:channel, a:delta)
+  elseif On('hex')
+    let s:context = 'hex'
+    call Audit_for_hex(a:channel, a:delta)
+  else
+    echo 'on nothing'
+  endif
+endfunction
+" }}} Audit ❮
+" {{{ Audit_for_hidef ❯
+function! Audit_for_hidef(channel, delta)
+  if Get_last('trigger_pos') == Get_current('line')
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false)
+  else
+    call Set_last('trigger_pos')
+    call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
+  endif
+endfunction
+" }}} Audit_for_hidef ❮
+" {{{ Audit_for_hex ❯
+function! Audit_for_hex(channel, delta)
+  call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
+endfunction
+" }}} Audit_for_hex ❮
+" {{{ Audit_for_preview ❯
+function! Audit_for_preview(channel, delta)
+  if Get_last('cursor_pos') == Get_current('pos')
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'preview')
+  else
+    echo 'No color selected'
+  endif
+endfunction
+" }}} Audit_for_preview ❮
+" {{{ Replace_hex ❯
+function! Replace_hex(old, new)
+  exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
+endfunction
+" }}} Replace_hex ❮
+" {{{ Preview_hex ❯
+function! Preview_hex(hex)
+  if g:preview_style == 'fg'
+    exe 'hi Visual guifg=#' . a:hex
+  elseif g:preview_style == 'bg'
+    exe 'hi Visual guibg=#' . a:hex
+  elseif g:preview_style == 'both'
+    exe 'hi Visual guifg=#' . a:hex
+    exe 'hi Visual guibg=#' . a:hex
+  endif
+
+  if g:preview_region == 'screen'
+    normal! HVL
+  elseif g:preview_region == 'para'
+    normal! vap
+  elseif g:preview_region == 'WORD'
+    normal! vaW
+  elseif g:preview_region == 'word'
+    normal vaw
+  endif
+
+  augroup Swatch
+    au!
+    au CursorMoved * call Reset_visual()
+  augroup END
+
+  call Set_last('cursor_pos')
+endfunction
+" }}} Preview_hex ❮
+" {{{ Reset_visual ❯
+function! Reset_visual()
+  if Get_last('cursor_pos') != Get_current('pos')
+    exe 'hi Visual guifg=#aaaeac guibg=#ffffff'
+    augroup Swatch
+      au!
+    augroup END
+  endif
+endfunction
+" }}} Reset_visual ❮
+" {{{ Get_hex ❯
+function! Get_hex()
+  return expand('<cword>')[-6:]
+endfunction
+" }}} Get_hex ❮
 " {{{ Swatch_load ❯
 function! Swatch_load(colorscheme)
   exe 'colo ' . a:colorscheme
@@ -165,33 +283,6 @@ function! Get_template()
   return template
 endfunction
 " }}} Get_template ❮
-" {{{ Adjust_Levels ❯
-function! Adjust_Levels(channel, delta, ...)
-  let a:audit = get(a:, 1, v:true)
-  let s:in_visual = get(a:, 2, v:false)
-  if a:audit == v:true
-    call Audit(a:channel, a:delta)
-  else
-    if s:context == 'hidef'
-      let group = Get_group('hidef')
-      call Position_cursor('hidef')
-      let key = Get_hidef('key') | let value = Get_hidef('value')
-      if key == 'gui'
-        let new_style_string = Transform_style(value, a:channel, a:delta)
-        call Apply_style(group, key, new_style_string)
-        call Replace_hidef(key, new_style_string)
-      else
-        let new_hex = Transform_hex(value, a:channel, a:delta)
-        call Apply_style(group, key, new_hex)
-        call Replace_hidef(key, new_hex)
-      endif
-    elseif s:context == 'hex'
-      call Position_cursor('hex')
-    elseif s:context == 'preview'
-    endif
-  endif
-endfunction
-" }}} Adjust_Levels ❮
 " {{{ Replace_hidef ❯
 function! Replace_hidef(key, value)
   exe 's/' . expand('<cWORD>') . '/' . a:key . '=' 
@@ -235,81 +326,44 @@ function! Position_cursor(context)
         normal bl
       endif
     else
-      echo 'asdfsf'
       call search('\v#[a-fA-F0-9]{6}')
         normal l
     endif
+    call Set_last('trigger_pos')
+    echo Get_last('trigger_pos')
+  elseif a:context == 'in_visual'
+    call cursor(s:last_trigger_pos)
+    call Position_cursor('hex')
   endif
 endfunction
 " }}} Position_cursor ❮
 " {{{ Get_last ❯
 function! Get_last(value)
-  if a:value == 'trigger_line'
-    return s:last_trigger_line
-  elseif a:value == 'cursor_line'
-    return s:last_cursor_line
+  if a:value == 'trigger_pos'
+    return s:last_trigger_pos
+  elseif a:value == 'cursor_pos'
+    return s:last_cursor_pos
   endif
 endfunction
 " }}} Get_last ❮
 " {{{ Set_last ❯
 function! Set_last(value)
-  if a:value == 'trigger_line'
-    let s:last_trigger_line = line('.')
-  elseif a:value == 'cursor_line'
-    let s:last_cursor_line = line('.')
+  if a:value == 'trigger_pos'
+    let s:last_trigger_pos = [line('.'),col('.')]
+  elseif a:value == 'cursor_pos'
+    let s:last_cursor_pos = [line('.'),col('.')]
   endif
 endfunction
 " }}} Set_last ❮
-" {{{ Get_current_line ❯
-function! Get_current_line()
-  return line('.')
-endfunction
-" }}} Get_current_line ❮
-" {{{ Audit ❯
-function! Audit(channel, delta)
-  if s:in_visual == v:true
-    let s:context = 'in_visual'
-    call Audit_for_preview(a:channel, a:delta)
-  elseif On('hidef')
-    let s:context = 'hidef'
-    call Audit_for_hidef(a:channel, a:delta)
-  elseif On('hex')
-    let s:context = 'hex'
-    call Audit_for_hex(a:channel, a:delta)
-  else
-    echo 'on nothing'
+" {{{ Get_current ❯
+function! Get_current(thing)
+  if a:thing == 'line'
+    return line('.')
+  elseif a:thing == 'pos'
+    return [line('.'),col('.')]
   endif
 endfunction
-" }}} Audit ❮
-" {{{ Audit_for_hidef ❯
-function! Audit_for_hidef(channel, delta)
-  if Get_last('trigger_line') == Get_current_line()
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false)
-  else
-    call Set_last('trigger_line')
-    call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
-  endif
-endfunction
-" }}} Audit_for_hidef ❮
-" {{{ Audit_for_hex ❯
-function! Audit_for_hex(channel, delta)
-  if Get_last('trigger_line') == Get_current_line()
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
-  else
-    call Set_last('trigger_line')
-    call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
-  endif
-endfunction
-" }}} Audit_for_hex ❮
-" {{{ Audit_for_preview ❯
-function! Audit_for_preview(...)
-  if Get_last('trigger_line') == Get_current_line()
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'preview')
-  else
-    echo 'No color selected'
-  endif
-endfunction
-" }}} Audit_for_preview ❮
+" }}} Get_current ❮
 " {{{ On ❯
 function! On(thing)
   let line = getline('.')
@@ -328,22 +382,6 @@ function! On(thing)
   endif
 endfunction
 " }}} On ❮
-" {{{ Set_Shortcuts ❯
-function! Set_Shortcuts(channels)
-  for i in range(0,2)
-    exe 'nnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ':call Adjust_Levels(' . l:i . ',1)<cr>'
-    exe 'nnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ':call Adjust_Levels(' . l:i . ',-1)<cr>'
-    exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',1,'
-          \. 'v:true, v:true)<cr>' 
-    exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',-1,'
-          \. 'v:true, v:true)<cr>'
-  endfor
-endfunction
-" }}} Set_Shortcuts ❮
 " {{{ Get_group ❯
 function! Get_group(context)
   if a:context == 'cursor'
@@ -423,19 +461,37 @@ function! Constrain_value(x, range)
   return min([max([a:x, l:min]), l:max])
 endfunction
 " }}} Constrain_value ❮
+" {{{ Set_Shortcuts ❯
+function! Set_Shortcuts(channels)
+  for i in range(0,2)
+    exe 'nnoremap <m-' . a:channels[l:i][0] . '> '
+          \. ':call Adjust_Levels(' . l:i . ',1)<cr>'
+    exe 'nnoremap <m-' . a:channels[l:i][1] . '> '
+          \. ':call Adjust_Levels(' . l:i . ',-1)<cr>'
+    exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
+          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',1,'
+          \. 'v:true, v:true)<cr>' 
+    exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
+          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',-1,'
+          \. 'v:true, v:true)<cr>'
+  endfor
+endfunction
+" }}} Set_Shortcuts ❮
 
 " {{{ Variables ❯
-let s:last_trigger_line = 0
-let s:last_cursor_line = 0
+let s:last_trigger_pos = [0,0]
+let s:last_cursor_pos = [0,0]
 let g:swatch_step = 2
 let s:in_visual = v:false
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
+let g:preview_region = 'para'
+let g:preview_style = 'both'
 " }}} Variables ❮
 
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 
-" hi Normal guibg=#aaaaaa guifg=#aaaaaa gui=italic,bold
-" #aaaaaa '#aaaaaa' #aaaaaa
+" hi Normal guibg=#f4e2b2 guifg=#aaacaa gui=bold
+"  '#b2aaac' #b2aaac
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
