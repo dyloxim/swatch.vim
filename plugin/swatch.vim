@@ -109,9 +109,42 @@ function! Adjust_Levels(channel, delta, ...)
   if a:audit == v:true
     call Audit(a:channel, a:delta)
   else
+    if s:context == 'hidef'
+      let group = Get_group('hidef')
+      call Position_cursor('hidef')
+    elseif s:context == 'hex'
+      call Position_cursor('hex')
+    elseif s:context == 'preview'
+    endif
   endif
 endfunction
 " }}} Adjust_Levels ❮
+" {{{ Position_cursor ❯
+function! Position_cursor(context)
+  let cword = expand('<cword>')
+  let cWORD = expand('<cWORD>')
+  if a:context == 'hidef'
+    if cWORD =~ '\vgui(fg|bg)?\=#[a-fA-F0-9]{6}'
+      normal Ebl
+    else
+      call search('\vgui(fg|bg)?\=') | normal Ebl
+    endif
+  elseif a:context == 'hex'
+    if cword =~ '\v#[a-fA-F0-9]{6}' 
+          \&& !(getline('.')[col('.')-1] =~ '\s')
+      if getline('.')[col('.')-1] == '#'
+        normal l
+      else
+        normal bl
+      endif
+    else
+      echo 'asdfsf'
+      call search('\v#[a-fA-F0-9]{6}')
+        normal l
+    endif
+  endif
+endfunction
+" }}} Position_cursor ❮
 " {{{ Get_last ❯
 function! Get_last(value)
   if a:value == 'trigger_line'
@@ -137,12 +170,12 @@ endfunction
 " }}} Get_current_line ❮
 " {{{ Audit ❯
 function! Audit(channel, delta)
-  if On('hidef')
-    let s:context = 'hidef'
-    call Audit_for_hidef(a:channel, a:delta)
-  elseif s:in_visual == v:true
+  if s:in_visual == v:true
     let s:context = 'in_visual'
     call Audit_for_preview(a:channel, a:delta)
+  elseif On('hidef')
+    let s:context = 'hidef'
+    call Audit_for_hidef(a:channel, a:delta)
   elseif On('hex')
     let s:context = 'hex'
     call Audit_for_hex(a:channel, a:delta)
@@ -162,7 +195,7 @@ function! Audit_for_hidef(channel, delta)
 endfunction
 " }}} Audit_for_hidef ❮
 " {{{ Audit_for_hex ❯
-function! Audit_for_hex()
+function! Audit_for_hex(channel, delta)
   if Get_last('trigger_line') == Get_current_line()
     undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
   else
@@ -215,31 +248,48 @@ function! Set_Shortcuts(channels)
 endfunction
 " }}} Set_Shortcuts ❮
 " {{{ Get_group ❯
-function! Get_group()
-  let stack = synstack(line("."),col("."))
-  let syntaxes = []
-  for i in range(0,len(l:stack)-1)
-    let l:syntaxes = add(l:syntaxes,
-          \[
-          \l:stack[l:i],
-          \synIDattr(l:stack[l:i], "name"),
-          \synIDattr(synIDtrans(l:stack[l:i]), "name")
-          \])
-  endfor
-  if len(l:syntaxes) == 0
-    let l:syntaxes = [[0,"Normal","Normal"]]
+function! Get_group(context)
+  if a:context == 'cursor'
+    let stack = synstack(line("."),col("."))
+    let syntaxes = []
+    for i in range(0,len(l:stack)-1)
+      let l:syntaxes = add(l:syntaxes,
+            \[
+            \l:stack[l:i],
+            \synIDattr(l:stack[l:i], "name"),
+            \synIDattr(synIDtrans(l:stack[l:i]), "name")
+            \])
+    endfor
+    if len(l:syntaxes) == 0
+      let l:syntaxes = [[0,"Normal","Normal"]]
+    endif
+    let synlist = map(deepcopy(l:syntaxes), {
+          \k,v -> printf("%s. %s -> %s -> %s", k+1, v[0], v[1], 
+          \v[1] == v[2] ? "-" : v[2])
+          \})
+    let choice = inputlist(
+          \["Choose highlight group you wish to alter"]
+          \+ l:synlist
+          \)
+    return l:syntaxes[l:choice-1][2]
+  elseif a:context == 'hidef'
+    call Move_cursor([0,1])
+    let line_num = search('\vhi(light)? \w+', 'bn')
+    call Move_cursor([0,-1])
+    return split(getline(line_num))[1]
   endif
-  let synlist = map(deepcopy(l:syntaxes), {
-        \k,v -> printf("%s. %s -> %s -> %s", k+1, v[0], v[1], 
-        \v[1] == v[2] ? "-" : v[2])
-        \})
-  let choice = inputlist(
-        \["Choose highlight group you wish to alter"]
-        \+ l:synlist
-        \)
-  return l:syntaxes[l:choice-1][2]
 endfunction
 " }}} Get_group ❮
+" {{{ Move_cursor ❯
+function! Move_cursor(instruction)
+  if len(a:instruction) == 2
+    let [x,y] = [a:instruction[0], a:instruction[1]]
+    call cursor(line('.') + x, col('.') + y)
+  elseif a:instruction == '0'
+    call cursor(line('.'), 1)
+  endif
+endfunction
+" }}} Move_cursor ❮
 
 " {{{ Variables ❯
 let s:last_hidef_line = 0
@@ -251,8 +301,7 @@ let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 
-" hi Normal guibg=#aaaaaa
-" #aaaaaa
-"
+" hi Normal guibg=#aaaaaa guifg=#aaaaaa
+" #aaaaaa '#aaaaaa' #aaaaaa
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
