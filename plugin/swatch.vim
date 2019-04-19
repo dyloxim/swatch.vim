@@ -1,3 +1,17 @@
+" {{{ vimFuncBody
+hi vimFuncBody
+    \ gui=none
+    \ guifg=#chngme
+    \ guibg=none
+" }}} vimFuncBody
+" {{{ Swatch_load ❯
+function! Swatch_load(colorscheme)
+  exe 'colo ' . a:colorscheme
+  if filereadable(g:swatch_dir . 'alterations/' . a:colorscheme . '.vim')
+    exe 'source ' . g:swatch_dir . 'alterations/' . a:colorscheme . '.vim'
+  endif
+endfunction
+" }}} Swatch_load ❮
 " {{{ New_adjustment ❯
 function! New_adjustment(...)
   if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
@@ -7,17 +21,10 @@ function! New_adjustment(...)
         \. (exists('g:colors_name') ? g:colors_name : 'default')
         \. '.vim'
 
-  if bufwinnr(alteration_file) == -1
-    wincmd v | wincmd L | exe '50 wincmd |'
-    exe 'edit! ' . l:alteration_file
-    if !filereadable(l:alteration_file)
-      call append(0, '" vim:tw=78:ts=2:sw=2:et:fdm=marker:')
-      call Insert_template()
-      write alteration_file
-      edit
-    endif
-  else
+  if Swatch_Buffer_Open()
     exe bufwinnr(alteration_file) . 'wincmd w'
+  else
+    call Init_alterations_file(alteration_file)
   endif
 
   silent if !search(l:group, 'n')
@@ -28,16 +35,40 @@ function! New_adjustment(...)
   endif
 endfunction
 " }}} New_adjustment ❮
+" {{{ Init_alterations_file ❯
+function! Init_alterations_file(path)
+    wincmd v | wincmd L | exe '50 wincmd |'
+    if !filereadable(a:path)
+      let template = Get_template()
+      exe '!mkdir -p ' . g:swatch_dir . 'alterations/'
+      exe '!touch ' . a:path
+      silent call writefile(template, a:path)
+      exe 'edit ' . a:path
+    endif
+endfunction
+" }}} Init_alterations_file ❮
+" {{{ Swatch_Buffer_Open ❯
+function! Swatch_Buffer_Open()
+  let alteration_file = g:swatch_dir . 'alterations/'
+        \. (exists('g:colors_name') ? g:colors_name : 'default')
+        \. '.vim'
+  if bufwinnr(alteration_file) == -1
+    return 'no'
+  else
+    return 'yes'
+  endif
+endfunction
+" }}} Swatch_Buffer_Open ❮
 " {{{ Insert_group ❯
 function! Insert_group(group, attributes)
   let [fg, bg, styles] = a:attributes
   call append(0, 
-        \['"{{{ '        . a:group ] +
+        \['" {{{ '        . a:group ] +
         \['hi '          . a:group ] +
         \['    \ gui='   . l:styles] +
         \['    \ guifg=' . l:fg    ] +
         \['    \ guibg=' . l:bg    ] +
-        \['"}}} '        . a:group ]
+        \['" }}} '        . a:group ]
         \)
 endfunction
 " }}} Insert_group ❮
@@ -111,8 +142,9 @@ function! Transform_style(style_string, channel, delta)
   return Style_decode(tally)
 endfunction
 " }}} Transform_style ❮
-" {{{ Insert_template ❯
-function! Insert_template()
+" {{{ Get_template ❯
+function! Get_template()
+  let template = ['"↓ Difficult to identify groups ↓']
   for group in [
         \'FoldColumn', 'Cursor', 'VertSplit',
         \'Folded', 'Visual', 'Search',
@@ -121,18 +153,18 @@ function! Insert_template()
         \'SpellRare', 'SpellLocal', 'NonText',
         \'MatchParen']
     let [fg, bg, style] = Get_attributes_string(group)
-    call append(0,
+    let template = template +
           \['"{{{ '        . group] +
           \['hi '          . group] +
           \['    \ gui='   . style] +
           \['    \ guifg=' . fg   ] +
           \['    \ guibg=' . bg   ] +
           \['"}}} '        . group]
-          \)
   endfor
-  call append(0, '"↓ Difficult to identify groups ↓')
+  let template = template + ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
+  return template
 endfunction
-" }}} Insert_template ❮
+" }}} Get_template ❮
 " {{{ Adjust_Levels ❯
 function! Adjust_Levels(channel, delta, ...)
   let a:audit = get(a:, 1, v:true)
@@ -150,7 +182,7 @@ function! Adjust_Levels(channel, delta, ...)
         call Replace_hidef(key, new_style_string)
       else
         let new_hex = Transform_hex(value, a:channel, a:delta)
-        call Apply_style(group, key, value)
+        call Apply_style(group, key, new_hex)
         call Replace_hidef(key, new_hex)
       endif
     elseif s:context == 'hex'
@@ -395,7 +427,7 @@ endfunction
 " {{{ Variables ❯
 let s:last_trigger_line = 0
 let s:last_cursor_line = 0
-let g:swatch_step = 10
+let g:swatch_step = 2
 let s:in_visual = v:false
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
 " }}} Variables ❮
