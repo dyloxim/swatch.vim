@@ -25,7 +25,6 @@ function! Adjust_Levels(channel, delta, ...)
       call Replace_hex(hex, new_hex)
       call Preview_hex(new_hex)
     elseif s:context == 'in_visual'
-      call Position_cursor('in_visual')
       let hex = Get_hex() | let new_hex = Transform_hex(hex, a:channel, a:delta)
       call Replace_hex(hex, new_hex)
       call Preview_hex(new_hex)
@@ -51,7 +50,7 @@ endfunction
 " }}} Audit ❮
 " {{{ Audit_for_hidef ❯
 function! Audit_for_hidef(channel, delta)
-  if Get_last('trigger_pos') == Get_current('line')
+  if Get_last('trigger_pos')[0] == Get_current('line')
     undojoin | call Adjust_Levels(a:channel, a:delta, v:false)
   else
     call Set_last('trigger_pos')
@@ -66,16 +65,17 @@ endfunction
 " }}} Audit_for_hex ❮
 " {{{ Audit_for_preview ❯
 function! Audit_for_preview(channel, delta)
-  if Get_last('cursor_pos') == Get_current('pos')
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'preview')
+  if Get_last('cursor_pos')[0] == Get_current('pos')[0]
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'in_visual')
   else
-    echo 'No color selected'
+    " echo 'No color selected'
   endif
 endfunction
 " }}} Audit_for_preview ❮
 " {{{ Replace_hex ❯
 function! Replace_hex(old, new)
   exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
+  call cursor(s:last_trigger_pos)
 endfunction
 " }}} Replace_hex ❮
 " {{{ Preview_hex ❯
@@ -94,9 +94,9 @@ function! Preview_hex(hex)
   elseif g:preview_region == 'para'
     normal! vap
   elseif g:preview_region == 'WORD'
-    normal! vaW
+    normal! viW
   elseif g:preview_region == 'word'
-    normal vaw
+    normal viw
   endif
 
   augroup Swatch
@@ -287,6 +287,7 @@ endfunction
 function! Replace_hidef(key, value)
   exe 's/' . expand('<cWORD>') . '/' . a:key . '=' 
         \. (len(a:key) > 3 ? '#' : '') . a:value
+  call cursor(s:last_cursor_pos)
 endfunction
 " }}} Replace_hidef ❮
 " {{{ Apply_style ❯
@@ -317,6 +318,7 @@ function! Position_cursor(context)
     else
       call search('\vgui(fg|bg)?\=') | normal Ebl
     endif
+    call Set_last('cursor_pos')
   elseif a:context == 'hex'
     if cword =~ '\v#[a-fA-F0-9]{6}' 
           \&& !(getline('.')[col('.')-1] =~ '\s')
@@ -330,10 +332,8 @@ function! Position_cursor(context)
         normal l
     endif
     call Set_last('trigger_pos')
-    echo Get_last('trigger_pos')
   elseif a:context == 'in_visual'
     call cursor(s:last_trigger_pos)
-    call Position_cursor('hex')
   endif
 endfunction
 " }}} Position_cursor ❮
@@ -411,7 +411,9 @@ function! Get_group(context)
     call Move_cursor([0,1])
     let line_num = search('\vhi(light)? \w+', 'bn')
     call Move_cursor([0,-1])
-    return split(getline(line_num))[1]
+    let tokens = split(getline(line_num))
+    return filter(copy(tokens),
+          \{k,v -> k == 0 ? v:false : (tokens[k-1] =~ '\vhi(light)?' ? v:true : v:false)})[0]
   endif
 endfunction
 " }}} Get_group ❮
@@ -484,14 +486,12 @@ let s:last_cursor_pos = [0,0]
 let g:swatch_step = 2
 let s:in_visual = v:false
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
-let g:preview_region = 'para'
+let g:preview_region = 'word'
 let g:preview_style = 'both'
 " }}} Variables ❮
 
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 
-" hi Normal guibg=#f4e2b2 guifg=#aaacaa gui=bold
-"  '#b2aaac' #b2aaac
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
