@@ -1,17 +1,18 @@
 " {{{ New_adjustment ❯
 function! New_adjustment(...)
-  if len(a:) < 5 | let group = Get_group() | else | let group = get(a:, 1) | endif
-  let attributes = Get_attributes(l:group)
+  if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
+  let attributes = Get_attributes_string(group)
+
   let alteration_file = g:swatch_dir . 'alterations/'
         \. (exists('g:colors_name') ? g:colors_name : 'default')
         \. '.vim'
 
   if bufwinnr(alteration_file) == -1
     wincmd v | wincmd L | exe '50 wincmd |'
-    exe 'edit ' . l:alteration_file
+    exe 'edit! ' . l:alteration_file
     if !filereadable(l:alteration_file)
-      call Insert_template()
       call append(0, '" vim:tw=78:ts=2:sw=2:et:fdm=marker:')
+      call Insert_template()
       write alteration_file
       edit
     endif
@@ -29,25 +30,35 @@ endfunction
 " }}} New_adjustment ❮
 " {{{ Insert_group ❯
 function! Insert_group(group, attributes)
-  let [fg, bg, styles] = [
-        \a:attributes[0], 
-        \a:attributes[1], 
-        \Style_decode(a:attributes[2])
-        \]
-  let [fg, bg, styles] = map([fg, bg, styles], {k,v -> v == '' ? 'none' : v})
+  let [fg, bg, styles] = a:attributes
   call append(0, 
-        \['"{{{ ' . a:group      ] +
-        \['hi ' . a:group        ] +
-        \['    \ gui=' . l:styles] +
-        \['    \ guifg=' . l:fg  ] +
-        \['    \ guibg=' . l:bg  ] +
-        \['"}}} ' . a:group      ]
+        \['"{{{ '        . a:group ] +
+        \['hi '          . a:group ] +
+        \['    \ gui='   . l:styles] +
+        \['    \ guifg=' . l:fg    ] +
+        \['    \ guibg=' . l:bg    ] +
+        \['"}}} '        . a:group ]
         \)
 endfunction
 " }}} Insert_group ❮
-" {{{ Get_attributes ❯
+" {{{ Get_attributes_string ❯
+function! Get_attributes_string(group)
+  redir => group_information | silent exe "hi" a:group | redir END
+  let attributes = filter(split(l:group_information), {
+        \k,v -> match(v, 'gui') != '-1'
+        \})
+  let [fg, bg, style] = ['none', 'none', 'none']
+  for attr in attributes
+    if match(attr, 'guifg=') != -1 | let fg    = attr[6:] | endif
+    if match(attr, 'guibg=') != -1 | let bg    = attr[6:] | endif
+    if match(attr, 'gui=') != -1   | let style = attr[4:] | endif
+  endfor
+  return [fg, bg, style]
+endfunction
+" }}} Get_attributes_string ❮
+" {{{ Get_attributes_tally ❯
 " return looks like ['fg', 'bg', 'styles']
-function! Get_attributes(group)
+function! Get_style_tally(group)
   let hlID = hlID(a:group)
   return [
         \synIDattr(hlID, 'fg#'),
@@ -59,59 +70,89 @@ function! Get_attributes(group)
         \)]
         \]
 endfunction
-" }}} Get_attributes ❮
+" }}} Get_attributes_tally ❮
 " {{{ Style_encode ❯
 function! Style_encode(style_string)
+  let styles = split(a:style_string, ',')
+  let tally = [0,0,0]
+  for style in styles
+    if style =~ 'bold'      | let tally[0] = 1 | endif
+    if style =~ 'italic'    | let tally[1] = 1 | endif
+    if style =~ 'underline' | let tally[2] = 1 | endif
+    if style =~ 'undercurl' | let tally[2] = 2 | endif
+  endfor
+  return tally
 endfunction
 " }}} Style_encode ❮
 " {{{ Style_decode ❯
 function! Style_decode(tally)
-  return
-    \ (a:tally[0] == 1 ? 'bold,'      : '') .
-    \ (a:tally[1] == 1 ? 'italic,'    : '') .
-    \ (a:tally[2] == 1 ? 'underline,' : '') .
-    \ (a:tally[2] == 2 ? 'undercurl,' : '')
+  if a:tally == [0,0,0]
+    return 'none'
+  else
+    return
+          \ (a:tally[0] == 1 ? 'bold,'      : '') .
+          \ (a:tally[1] == 1 ? 'italic,'    : '') .
+          \ (a:tally[2] == 1 ? 'underline,' : '') .
+          \ (a:tally[2] == 2 ? 'undercurl,' : '')
+  endif
 endfunction
 " }}} Style_decode ❮
+" {{{ Transform_style ❯
+function! Transform_style(style_string, channel, delta)
+  let tally = encode(a:style_string)
+  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
+  let tally = VectorAdd(
+        \copy(l:tally), 
+        \ScaleVector(a:delta/abs(a:delta), l:change)
+        \)
+  let tally = VectorAdd(tally, [2,2,3])
+  let tally[0] = tally[0] % 2 | let tally[1] = tally[1] % 2
+  let tally[2] = tally[2] % 3
+  return Style_decode(tally)
+endfunction
+" }}} Transform_style ❮
 " {{{ Insert_template ❯
 function! Insert_template()
   for group in [
         \'FoldColumn', 'Cursor', 'VertSplit',
         \'Folded', 'Visual', 'Search',
         \'IncSearch', 'LineNR', 'CursorLineNR',
-        \'CursorLine', 'SpellBad'',', 'SpellCap',
+        \'CursorLine', 'SpellBad', 'SpellCap',
         \'SpellRare', 'SpellLocal', 'NonText',
         \'MatchParen']
-    redir => group_information | silent exe "hi" group | redir END
-    let [style, fg, bg] = ['none', 'none', 'none']
-    for attr in attributes
-      if attr =~ 'gui=' | let style = attr[4:] | endif
-      if attr =~ 'guifg=' | let fg    = attr[6:] | endif
-      if attr =~ 'guibg=' | let bg    = attr[6:] | endif
-    endfor
-    echo [style, fg, bg]
+    let [fg, bg, style] = Get_attributes_string(group)
     call append(0,
-          \['"{{{ ' . group     ] +
-          \['hi ' . group       ] +
-          \['    \ gui=' . style] +
-          \['    \ guifg=' . fg ] +
-          \['    \ guibg=' . bg ] +
-          \['"}}} ' . group     ]
+          \['"{{{ '        . group] +
+          \['hi '          . group] +
+          \['    \ gui='   . style] +
+          \['    \ guifg=' . fg   ] +
+          \['    \ guibg=' . bg   ] +
+          \['"}}} '        . group]
           \)
-    call append(0, '"↓ Difficult to identify groups ↓')
+  endfor
+  call append(0, '"↓ Difficult to identify groups ↓')
 endfunction
 " }}} Insert_template ❮
 " {{{ Adjust_Levels ❯
 function! Adjust_Levels(channel, delta, ...)
   let a:audit = get(a:, 1, v:true)
   let s:in_visual = get(a:, 2, v:false)
-
   if a:audit == v:true
     call Audit(a:channel, a:delta)
   else
     if s:context == 'hidef'
       let group = Get_group('hidef')
       call Position_cursor('hidef')
+      let key = Get_hidef('key') | let value = Get_hidef('value')
+      if key == 'gui'
+        let new_style_string = Transform_style(value, a:channel, a:delta)
+        call Apply_style(group, key, new_style_string)
+        call Replace_hidef(key, value)
+      else
+        let new_hex = Transform_hex(value, a:channel, a:delta)
+        call Apply_style(group, key, value)
+        call Replace_hidef(key, value)
+      endif
     elseif s:context == 'hex'
       call Position_cursor('hex')
     elseif s:context == 'preview'
@@ -119,6 +160,27 @@ function! Adjust_Levels(channel, delta, ...)
   endif
 endfunction
 " }}} Adjust_Levels ❮
+" {{{ Replace_hidef ❯
+function! Replace_hidef(key, value)
+  exe 's/' . expand('<cWORD>') . '/' . a:key . '=' 
+        \. (len(a:key) > 3 ? '#' : '') . a:value
+endfunction
+" }}} Replace_hidef ❮
+" {{{ Apply_style ❯
+function! Apply_style(group, key, value)
+  exe 'hi ' . a:group . ' ' . a:key . '=' . (len(a:key) > 3 ? '#' : '') . a:value
+endfunction
+" }}} Apply_style ❮
+" {{{ Get_hidef ❯
+function! Get_hidef(attr)
+  let cWORD = expand('<cWORD>')
+  if a:attr == 'key'
+    return split(cWORD, '=')[0]
+  elseif a:attr == 'value'
+    return split(cWORD, '=')[1][1:]
+  endif
+endfunction
+" }}} Get_hidef ❮
 " {{{ Position_cursor ❯
 function! Position_cursor(context)
   let cword = expand('<cword>')
@@ -290,6 +352,39 @@ function! Move_cursor(instruction)
   endif
 endfunction
 " }}} Move_cursor ❮
+" {{{ Transform_hex ❯
+function! Transform_hex(hex, channel, delta)
+  let rgb = Hex_to_RGB(a:hex)
+  let new_rgb = Transform_rgb(rgb, a:channel, a:delta)
+  let new_hex = RGB_to_hex(new_rgb)
+  return new_hex
+endfunction
+" }}} Transform_hex ❮
+" {{{ Transform_rgb ❯
+function! Transform_rgb(rgb, channel, delta)
+  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
+  let new = VectorAdd(copy(a:rgb), ScaleVector(a:delta, l:change))
+  return map(new, {k,v -> Constrain_value(v, [0,255])})
+endfunction
+" }}} Transform_rgb ❮
+" {{{ Hex_to_RGB ❯
+function! Hex_to_RGB(hex)
+  return map([a:hex[0:1], a:hex[2:3], a:hex[4:5]], 
+        \{k,v -> printf('%d', str2nr(v, '16'))}
+        \)
+endfunction
+" }}} Hex_to_RGB ❮
+" {{{ RGB_to_hex ❯
+function! RGB_to_hex(rgb)
+  return join(map(a:rgb, {k,v -> printf('%02x', v)}), '')
+endfunction
+" }}} RGB_to_hex ❮
+" {{{ Constrain_value ❯
+function! Constrain_value(x, range)
+  let min = a:range[0] | let max = a:range[1]
+  return min([max([a:x, l:min]), l:max])
+endfunction
+" }}} Constrain_value ❮
 
 " {{{ Variables ❯
 let s:last_hidef_line = 0
@@ -301,7 +396,7 @@ let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 
-" hi Normal guibg=#aaaaaa guifg=#aaaaaa
+" hi Normal guibg=#aaaaaa guifg=#aaaaaa gui=italic,bold
 " #aaaaaa '#aaaaaa' #aaaaaa
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
