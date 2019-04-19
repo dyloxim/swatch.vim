@@ -99,7 +99,7 @@ endfunction
 " }}} Style_decode ❮
 " {{{ Transform_style ❯
 function! Transform_style(style_string, channel, delta)
-  let tally = encode(a:style_string)
+  let tally = Style_encode(a:style_string)
   let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
   let tally = VectorAdd(
         \copy(l:tally), 
@@ -147,11 +147,11 @@ function! Adjust_Levels(channel, delta, ...)
       if key == 'gui'
         let new_style_string = Transform_style(value, a:channel, a:delta)
         call Apply_style(group, key, new_style_string)
-        call Replace_hidef(key, value)
+        call Replace_hidef(key, new_style_string)
       else
         let new_hex = Transform_hex(value, a:channel, a:delta)
         call Apply_style(group, key, value)
-        call Replace_hidef(key, value)
+        call Replace_hidef(key, new_hex)
       endif
     elseif s:context == 'hex'
       call Position_cursor('hex')
@@ -177,16 +177,19 @@ function! Get_hidef(attr)
   if a:attr == 'key'
     return split(cWORD, '=')[0]
   elseif a:attr == 'value'
-    return split(cWORD, '=')[1][1:]
+    if cWORD =~ '#'
+      return split(cWORD, '=')[1][1:]
+    else
+      return split(cWORD, '=')[1]
+    endif
   endif
 endfunction
 " }}} Get_hidef ❮
 " {{{ Position_cursor ❯
 function! Position_cursor(context)
-  let cword = expand('<cword>')
-  let cWORD = expand('<cWORD>')
+  let cword = expand('<cword>') | let cWORD = expand('<cWORD>')
   if a:context == 'hidef'
-    if cWORD =~ '\vgui(fg|bg)?\=#[a-fA-F0-9]{6}'
+    if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|\w+)'
       normal Ebl
     else
       call search('\vgui(fg|bg)?\=') | normal Ebl
@@ -210,7 +213,7 @@ endfunction
 " {{{ Get_last ❯
 function! Get_last(value)
   if a:value == 'trigger_line'
-    return s:last_hidef_line
+    return s:last_trigger_line
   elseif a:value == 'cursor_line'
     return s:last_cursor_line
   endif
@@ -218,8 +221,8 @@ endfunction
 " }}} Get_last ❮
 " {{{ Set_last ❯
 function! Set_last(value)
-  if a:value == 'hidef_line'
-    let s:last_hidef_line = line('.')
+  if a:value == 'trigger_line'
+    let s:last_trigger_line = line('.')
   elseif a:value == 'cursor_line'
     let s:last_cursor_line = line('.')
   endif
@@ -249,7 +252,7 @@ endfunction
 " {{{ Audit_for_hidef ❯
 function! Audit_for_hidef(channel, delta)
   if Get_last('trigger_line') == Get_current_line()
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
+    undojoin | call Adjust_Levels(a:channel, a:delta, v:false)
   else
     call Set_last('trigger_line')
     call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
@@ -363,7 +366,10 @@ endfunction
 " {{{ Transform_rgb ❯
 function! Transform_rgb(rgb, channel, delta)
   let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
-  let new = VectorAdd(copy(a:rgb), ScaleVector(a:delta, l:change))
+  let new = VectorAdd(
+        \copy(a:rgb), 
+        \ScaleVector(a:delta * g:swatch_step, l:change)
+        \)
   return map(new, {k,v -> Constrain_value(v, [0,255])})
 endfunction
 " }}} Transform_rgb ❮
@@ -387,8 +393,9 @@ endfunction
 " }}} Constrain_value ❮
 
 " {{{ Variables ❯
-let s:last_hidef_line = 0
+let s:last_trigger_line = 0
 let s:last_cursor_line = 0
+let g:swatch_step = 10
 let s:in_visual = v:false
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
 " }}} Variables ❮
