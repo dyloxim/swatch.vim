@@ -1,3 +1,27 @@
+" {{{ New_adjustment ❯
+function! New_adjustment(...)
+  if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
+  let attributes = Get_attributes_string(group)
+  let file_path = g:swatch_dir . 'alterations/'
+        \. (exists('g:colors_name') ? g:colors_name : 'default')
+        \. '.vim'
+  if Swatch_Buffer_Open()
+    exe bufwinnr(file_path) . 'wincmd w'
+  else
+    wincmd v | wincmd L | exe '50 wincmd |'
+    if !filereadable(file_path)
+      call Init_alterations_file(file_path)
+    endif
+    exe 'edit ' . file_path
+  endif
+  silent if !search(l:group, 'n')
+    call Insert_group(group, attributes)
+  endif
+  normal zMgg
+  call search(group)
+  normal zv3j
+endfunction
+" }}} New_adjustment ❮
 " {{{ Adjust_Levels ❯
 function! Adjust_Levels(channel, delta, ...)
   let a:audit = get(a:, 1, v:true)
@@ -130,39 +154,12 @@ function! Swatch_load(colorscheme)
   endif
 endfunction
 " }}} Swatch_load ❮
-" {{{ New_adjustment ❯
-function! New_adjustment(...)
-  if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
-  let attributes = Get_attributes_string(group)
-
-  let alteration_file = g:swatch_dir . 'alterations/'
-        \. (exists('g:colors_name') ? g:colors_name : 'default')
-        \. '.vim'
-
-  if Swatch_Buffer_Open()
-    exe bufwinnr(alteration_file) . 'wincmd w'
-  else
-    call Init_alterations_file(alteration_file)
-  endif
-
-  silent if !search(l:group, 'n')
-    call Insert_group(group, attributes)
-    normal zMgg
-    call search(group)
-    normal zv3j
-  endif
-endfunction
-" }}} New_adjustment ❮
 " {{{ Init_alterations_file ❯
 function! Init_alterations_file(path)
-    wincmd v | wincmd L | exe '50 wincmd |'
-    if !filereadable(a:path)
-      let template = Get_template()
-      exe '!mkdir -p ' . g:swatch_dir . 'alterations/'
-      exe '!touch ' . a:path
-      silent call writefile(template, a:path)
-      exe 'edit ' . a:path
-    endif
+  let template = Get_template()
+  exe '!mkdir -p ' . g:swatch_dir . 'alterations/'
+  exe '!touch ' . a:path
+  silent call writefile(template, a:path)
 endfunction
 " }}} Init_alterations_file ❮
 " {{{ Swatch_Buffer_Open ❯
@@ -171,9 +168,9 @@ function! Swatch_Buffer_Open()
         \. (exists('g:colors_name') ? g:colors_name : 'default')
         \. '.vim'
   if bufwinnr(alteration_file) == -1
-    return 'no'
+    return v:false
   else
-    return 'yes'
+    return v:true
   endif
 endfunction
 " }}} Swatch_Buffer_Open ❮
