@@ -84,6 +84,8 @@ endfunction
 " }}} Audit_for_hidef ❮
 " {{{ Audit_for_hex ❯
 function! Audit_for_hex(channel, delta)
+  let s:OG_visual_hidef = Get_attributes_string('Visual')
+  echom join(s:OG_visual_hidef, ' ')
   call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
 endfunction
 " }}} Audit_for_hex ❮
@@ -134,7 +136,9 @@ endfunction
 " {{{ Reset_visual ❯
 function! Reset_visual()
   if Get_last('cursor_pos') != Get_current('pos')
-    exe 'hi Visual guifg=#aaaeac guibg=#ffffff'
+    exe 'hi Visual guifg=' . s:OG_visual_hidef[0]
+          \. ' guibg=' . s:OG_visual_hidef[1]
+          \. ' gui=' . s:OG_visual_hidef[2]
     augroup Swatch
       au!
     augroup END
@@ -143,7 +147,10 @@ endfunction
 " }}} Reset_visual ❮
 " {{{ Get_hex ❯
 function! Get_hex()
-  return expand('<cword>')[-6:]
+  call cursor(s:last_trigger_pos)
+  let hex = expand('<cword>')[-6:]
+  call cursor(s:last_cursor_pos)
+  return hex
 endfunction
 " }}} Get_hex ❮
 " {{{ Swatch_load ❯
@@ -199,7 +206,7 @@ function! Get_attributes_string(group)
     if match(attr, 'guibg=') != -1 | let bg    = attr[6:] | endif
     if match(attr, 'gui=') != -1   | let style = attr[4:] | endif
   endfor
-  return [fg, bg, style]
+  return map([fg, bg, style], {k,v -> substitute(v, '#+', '#', 'g')})
 endfunction
 " }}} Get_attributes_string ❮
 " {{{ Get_attributes_tally ❯
@@ -476,19 +483,24 @@ function! Set_Shortcuts(channels)
   endfor
 endfunction
 " }}} Set_Shortcuts ❮
+" {{{ Preview_this ❯
+function! Preview_this()
+endfunction
+" }}} Preview_this ❮
 
 " {{{ Variables ❯
 let s:last_trigger_pos = [0,0]
 let s:last_cursor_pos = [0,0]
-let g:swatch_step = 2
+let g:swatch_step = 5
 let s:in_visual = v:false
+let s:OG_visual_hidef = ['aaaaaa', 'aaaaaa', '']
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
-let g:preview_region = 'word'
+let g:preview_region = 'screen'
 let g:preview_style = 'both'
 " }}} Variables ❮
 
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
-
+nnoremap <leader>pt :call Preview_this()
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
