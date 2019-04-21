@@ -1,3 +1,6 @@
+" Swatch: a great plugin by Joel Strouts
+
+" {{{ API ❯
 " {{{ New_adjustment ❯
 function! New_adjustment(...)
   if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
@@ -62,6 +65,118 @@ function! Adjust_Levels(channel, delta, ...)
   endif
 endfunction
 " }}} Adjust_Levels ❮
+" {{{ Preview_this ❯
+function! Preview_this()
+  let s:OG_visual_hidef = Get_attributes_string('Visual')
+  call Position_cursor('hex')
+  let hex = Get_hex('one')
+  call Preview_hex(hex, 'word')
+endfunction
+" }}} Preview_this ❮
+" {{{ Set_Shortcuts ❯
+function! Set_Shortcuts(channels)
+  for i in range(0,2)
+    exe 'nnoremap <m-' . a:channels[l:i][0] . '> '
+          \. ':call Adjust_Levels(' . l:i . ',1)<cr>'
+    exe 'nnoremap <m-' . a:channels[l:i][1] . '> '
+          \. ':call Adjust_Levels(' . l:i . ',-1)<cr>'
+    exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
+          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',1,'
+          \. 'v:true, v:true)<cr>' 
+    exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
+          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',-1,'
+          \. 'v:true, v:true)<cr>'
+  endfor
+endfunction
+" }}} Set_Shortcuts ❮
+" {{{ Variables ❯
+let g:swatch_step = 5
+let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/'
+let g:preview_region = 'word'
+let g:preview_style = 'bg'
+" }}} Variables ❮
+" }}} API ❮
+
+" {{{ Backend ❯
+" {{{ Computations ❯
+" {{{ Style_encode ❯
+function! Style_encode(style_string)
+  let styles = split(a:style_string, ',')
+  let tally = [0,0,0]
+  for style in styles
+    if style =~ 'bold'      | let tally[0] = 1 | endif
+    if style =~ 'italic'    | let tally[1] = 1 | endif
+    if style =~ 'underline' | let tally[2] = 1 | endif
+    if style =~ 'undercurl' | let tally[2] = 2 | endif
+  endfor
+  return tally
+endfunction
+" }}} Style_encode ❮
+" {{{ Style_decode ❯
+function! Style_decode(tally)
+  if a:tally == [0,0,0]
+    return 'none'
+  else
+    return
+          \ (a:tally[0] == 1 ? 'bold,'      : '') .
+          \ (a:tally[1] == 1 ? 'italic,'    : '') .
+          \ (a:tally[2] == 1 ? 'underline,' : '') .
+          \ (a:tally[2] == 2 ? 'undercurl,' : '')
+  endif
+endfunction
+" }}} Style_decode ❮
+" {{{ Transform_style ❯
+function! Transform_style(style_string, channel, delta)
+  let tally = Style_encode(a:style_string)
+  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
+  let tally = VectorAdd(
+        \copy(l:tally), 
+        \ScaleVector(a:delta/abs(a:delta), l:change)
+        \)
+  let tally = VectorAdd(tally, [2,2,3])
+  let tally[0] = tally[0] % 2 | let tally[1] = tally[1] % 2
+  let tally[2] = tally[2] % 3
+  return Style_decode(tally)
+endfunction
+" }}} Transform_style ❮
+" {{{ Transform_hex ❯
+function! Transform_hex(hex, channel, delta)
+  let rgb = Hex_to_RGB(a:hex)
+  let new_rgb = Transform_rgb(rgb, a:channel, a:delta)
+  let new_hex = RGB_to_hex(new_rgb)
+  return new_hex
+endfunction
+" }}} Transform_hex ❮
+" {{{ Transform_rgb ❯
+function! Transform_rgb(rgb, channel, delta)
+  let change = map([0,1,2], {k, v -> v == a:channel ? 1 : 0})
+  let new = VectorAdd(
+        \copy(a:rgb), 
+        \ScaleVector(a:delta * g:swatch_step, l:change)
+        \)
+  return map(new, {k,v -> Constrain_value(v, [0,255])})
+endfunction
+" }}} Transform_rgb ❮
+" {{{ Hex_to_RGB ❯
+function! Hex_to_RGB(hex)
+  return map([a:hex[0:1], a:hex[2:3], a:hex[4:5]], 
+        \{k,v -> printf('%d', str2nr(v, '16'))}
+        \)
+endfunction
+" }}} Hex_to_RGB ❮
+" {{{ RGB_to_hex ❯
+function! RGB_to_hex(rgb)
+  return join(map(a:rgb, {k,v -> printf('%02x', v)}), '')
+endfunction
+" }}} RGB_to_hex ❮
+" {{{ Constrain_value ❯
+function! Constrain_value(x, range)
+  let min = a:range[0] | let max = a:range[1]
+  return min([max([a:x, l:min]), l:max])
+endfunction
+" }}} Constrain_value ❮
+" }}} Computations ❮
+" {{{ Audits ❯
 " {{{ Audit ❯
 function! Audit(channel, delta)
   if s:in_visual == v:true
@@ -104,6 +219,8 @@ function! Audit_for_preview(channel, delta)
   endif
 endfunction
 " }}} Audit_for_preview ❮
+" }}} Audits ❮
+" {{{ Other ❯
 " {{{ Replace_hex ❯
 function! Replace_hex(old, new)
   exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
@@ -239,46 +356,6 @@ function! Get_style_tally(group)
         \]
 endfunction
 " }}} Get_attributes_tally ❮
-" {{{ Style_encode ❯
-function! Style_encode(style_string)
-  let styles = split(a:style_string, ',')
-  let tally = [0,0,0]
-  for style in styles
-    if style =~ 'bold'      | let tally[0] = 1 | endif
-    if style =~ 'italic'    | let tally[1] = 1 | endif
-    if style =~ 'underline' | let tally[2] = 1 | endif
-    if style =~ 'undercurl' | let tally[2] = 2 | endif
-  endfor
-  return tally
-endfunction
-" }}} Style_encode ❮
-" {{{ Style_decode ❯
-function! Style_decode(tally)
-  if a:tally == [0,0,0]
-    return 'none'
-  else
-    return
-          \ (a:tally[0] == 1 ? 'bold,'      : '') .
-          \ (a:tally[1] == 1 ? 'italic,'    : '') .
-          \ (a:tally[2] == 1 ? 'underline,' : '') .
-          \ (a:tally[2] == 2 ? 'undercurl,' : '')
-  endif
-endfunction
-" }}} Style_decode ❮
-" {{{ Transform_style ❯
-function! Transform_style(style_string, channel, delta)
-  let tally = Style_encode(a:style_string)
-  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
-  let tally = VectorAdd(
-        \copy(l:tally), 
-        \ScaleVector(a:delta/abs(a:delta), l:change)
-        \)
-  let tally = VectorAdd(tally, [2,2,3])
-  let tally[0] = tally[0] % 2 | let tally[1] = tally[1] % 2
-  let tally[2] = tally[2] % 3
-  return Style_decode(tally)
-endfunction
-" }}} Transform_style ❮
 " {{{ Get_template ❯
 function! Get_template()
   let template = ['"↓ Difficult to identify groups ↓']
@@ -455,80 +532,19 @@ function! Move_cursor(instruction)
   endif
 endfunction
 " }}} Move_cursor ❮
-" {{{ Transform_hex ❯
-function! Transform_hex(hex, channel, delta)
-  let rgb = Hex_to_RGB(a:hex)
-  let new_rgb = Transform_rgb(rgb, a:channel, a:delta)
-  let new_hex = RGB_to_hex(new_rgb)
-  return new_hex
-endfunction
-" }}} Transform_hex ❮
-" {{{ Transform_rgb ❯
-function! Transform_rgb(rgb, channel, delta)
-  let change = map([0,1,2], {k, v -> v == a:channel ? 1 : 0})
-  let new = VectorAdd(
-        \copy(a:rgb), 
-        \ScaleVector(a:delta * g:swatch_step, l:change)
-        \)
-  return map(new, {k,v -> Constrain_value(v, [0,255])})
-endfunction
-" }}} Transform_rgb ❮
-" {{{ Hex_to_RGB ❯
-function! Hex_to_RGB(hex)
-  return map([a:hex[0:1], a:hex[2:3], a:hex[4:5]], 
-        \{k,v -> printf('%d', str2nr(v, '16'))}
-        \)
-endfunction
-" }}} Hex_to_RGB ❮
-" {{{ RGB_to_hex ❯
-function! RGB_to_hex(rgb)
-  return join(map(a:rgb, {k,v -> printf('%02x', v)}), '')
-endfunction
-" }}} RGB_to_hex ❮
-" {{{ Constrain_value ❯
-function! Constrain_value(x, range)
-  let min = a:range[0] | let max = a:range[1]
-  return min([max([a:x, l:min]), l:max])
-endfunction
-" }}} Constrain_value ❮
-" {{{ Set_Shortcuts ❯
-function! Set_Shortcuts(channels)
-  for i in range(0,2)
-    exe 'nnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ':call Adjust_Levels(' . l:i . ',1)<cr>'
-    exe 'nnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ':call Adjust_Levels(' . l:i . ',-1)<cr>'
-    exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',1,'
-          \. 'v:true, v:true)<cr>' 
-    exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',-1,'
-          \. 'v:true, v:true)<cr>'
-  endfor
-endfunction
-" }}} Set_Shortcuts ❮
-" {{{ Preview_this ❯
-function! Preview_this()
-  let s:OG_visual_hidef = Get_attributes_string('Visual')
-  call Position_cursor('hex')
-  let hex = Get_hex('one')
-  call Preview_hex(hex, 'word')
-endfunction
-" }}} Preview_this ❮
-
+" }}} Other ❮
 " {{{ Variables ❯
 let s:last_trigger_pos = [0,0]
 let s:last_cursor_pos = [0,0]
-let g:swatch_step = 5
 let s:in_visual = v:false
 let s:OG_visual_hidef = ['000000', 'ffffff', 'none']
-let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/'
-let g:preview_region = 'word'
-let g:preview_style = 'bg'
 " }}} Variables ❮
+" }}} Backend ❮
 
+" {{{ Default Setup ❯
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 nnoremap <leader>pt :call Preview_this()<cr>
+" }}} Setup ❮
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
