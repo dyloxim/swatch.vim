@@ -304,7 +304,7 @@ function! Get_template()
         \'MatchParen']
     let [style, fg, bg] = Get_attributes_string(group)
   let [fg, bg] = map([fg, bg], 
-        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
+        \{k,v -> v[0] =~ '\u' ||  v =~ '\v(none|fg|bg)' ? v : '#' . v})
     let template = template +
           \['"{{{ '        . group] +
           \['hi '          . group] +
@@ -439,7 +439,7 @@ endfunction
 function! Insert_group(group, attributes)
   let [style, fg, bg] = a:attributes
   let [fg, bg] = map([fg, bg],
-        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
+        \{k,v -> v[0] =~ '\u' ||  v =~ '\v(none|fg|bg)' ? v : '#' . v})
   call append(0, 
         \['" {{{ '        . a:group] +
         \['hi '          . a:group ] +
