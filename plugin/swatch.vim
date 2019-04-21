@@ -43,12 +43,18 @@ function! Adjust_Levels(channel, delta, ...)
         call Replace_hidef(key, new_style_string)
       else
         if value[0] =~ '\u' 
-
-        else
-          let new_hex = Transform_hex(value, a:channel, a:delta)
-          call Apply_style(group, key, new_hex)
-          call Replace_hidef(key, new_hex)
+          let color_file = readfile($VIMRUNTIME . '/rgb.txt') 
+          let rgb = [0,0,0]
+          for color_def in color_file
+            if color_def =~ value
+              let rgb = split(color_def)[:-2]
+            endif
+          endfor
+          let value = RGB_to_hex(rgb)
         endif
+        let new_hex = Transform_hex(value, a:channel, a:delta)
+        call Apply_style(group, key, new_hex)
+        call Replace_hidef(key, new_hex)
       endif
     elseif s:context == 'hex'
       call Position_cursor_hex()
@@ -223,8 +229,7 @@ function! Audit_for_preview(channel, delta)
 endfunction
 " }}} Audit_for_preview ❮
 " }}} Audits ❮
-" {{{ Other ❯
-
+" {{{ Get & Set ❯
 " {{{ Get_attributes_string ❯
 function! Get_attributes_string(group)
   redir => group_information | silent exe "hi" a:group | redir END
@@ -378,19 +383,70 @@ function! Colors_name(...)
   return (exists('g:colors_name') ? g:colors_name : 'default')
 endfunction
 " }}} Colors_name ❮
-
+" {{{ Cursor_char ❯
+function! Cursor_char()
+  return getline('.')[col('.')-1]
+endfunction
+" }}} Cursor_char ❮
+" {{{ Get_last ❯
+function! Get_last(value)
+  if a:value == 'trigger_pos'
+    return s:last_trigger_pos
+  elseif a:value == 'cursor_pos'
+    return s:last_cursor_pos
+  endif
+endfunction
+" }}} Get_last ❮
+" {{{ Set_last ❯
+function! Set_last(value)
+  if a:value == 'trigger_pos'
+    let s:last_trigger_pos = [line('.'),col('.')]
+  elseif a:value == 'cursor_pos'
+    let s:last_cursor_pos = [line('.'),col('.')]
+  endif
+endfunction
+" }}} Set_last ❮
+" {{{ Get_current ❯
+function! Get_current(thing)
+  if a:thing == 'line'
+    return line('.')
+  elseif a:thing == 'pos'
+    return [line('.'),col('.')]
+  endif
+endfunction
+" }}} Get_current ❮
+" {{{ On ❯
+function! On(thing)
+  let line = getline('.')
+  if a:thing == 'hidef'
+    if line =~ '\vgui(fg|bg)?\='
+      return v:true
+    else
+      return v:false
+    endif
+  elseif a:thing == 'hex'
+    if line =~ '\v#[a-fA-F0-9]{6}'
+      return v:true
+    else
+      return v:false
+    endif
+  endif
+endfunction
+" }}} On ❮
+" }}} Get & Set ❮
+" {{{ Windows & Files ❯
 " {{{ Insert_group ❯
 function! Insert_group(group, attributes)
   let [style, fg, bg] = a:attributes
   let [fg, bg] = map([fg, bg],
         \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
   call append(0, 
-        \['" {{{ '        . a:group ] +
+        \['" {{{ '        . a:group] +
         \['hi '          . a:group ] +
-        \['    \ gui='   . l:styles] +
+        \['    \ gui='   . l:style ] +
         \['    \ guifg=' . l:fg    ] +
         \['    \ guibg=' . l:bg    ] +
-        \['" }}} '        . a:group ]
+        \['" }}} '        . a:group]
         \)
 endfunction
 " }}} Insert_group ❮
@@ -414,7 +470,8 @@ function! Swatch_Buffer_Open()
   endif
 endfunction
 " }}} Swatch_Buffer_Open ❮
-
+" }}} Windows & Files ❮
+" {{{ Replace / Load / styles ❯
 " {{{ Replace_hex ❯
 function! Replace_hex(old, new)
   exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
@@ -497,58 +554,8 @@ function! Swatch_load(...)
   endif
 endfunction
 " }}} Swatch_load ❮
-
-" {{{ Cursor_char ❯
-function! Cursor_char()
-  return getline('.')[col('.')-1]
-endfunction
-" }}} Cursor_char ❮
-" {{{ Get_last ❯
-function! Get_last(value)
-  if a:value == 'trigger_pos'
-    return s:last_trigger_pos
-  elseif a:value == 'cursor_pos'
-    return s:last_cursor_pos
-  endif
-endfunction
-" }}} Get_last ❮
-" {{{ Set_last ❯
-function! Set_last(value)
-  if a:value == 'trigger_pos'
-    let s:last_trigger_pos = [line('.'),col('.')]
-  elseif a:value == 'cursor_pos'
-    let s:last_cursor_pos = [line('.'),col('.')]
-  endif
-endfunction
-" }}} Set_last ❮
-" {{{ Get_current ❯
-function! Get_current(thing)
-  if a:thing == 'line'
-    return line('.')
-  elseif a:thing == 'pos'
-    return [line('.'),col('.')]
-  endif
-endfunction
-" }}} Get_current ❮
-" {{{ On ❯
-function! On(thing)
-  let line = getline('.')
-  if a:thing == 'hidef'
-    if line =~ '\vgui(fg|bg)?\='
-      return v:true
-    else
-      return v:false
-    endif
-  elseif a:thing == 'hex'
-    if line =~ '\v#[a-fA-F0-9]{6}'
-      return v:true
-    else
-      return v:false
-    endif
-  endif
-endfunction
-" }}} On ❮
-
+" }}} Replace / Load styles ❮
+" {{{ Cursor ❯
 " {{{ Position_cursor_hidef ❯
 function! Position_cursor_hidef()
   let cWORD = expand('<cWORD>')
@@ -610,8 +617,7 @@ function! Position_cursor_preview(...)
   let a:arg_name = get(a:, 1, [default value])
 endfunction
 " }}} Position_cursor_preview ❮
-
-" }}} Other ❮
+" }}} Cursor ❮
 " {{{ Variables ❯
 let s:last_trigger_pos = [0,0]
 let s:last_cursor_pos = [0,0]
@@ -625,6 +631,5 @@ call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 nnoremap <leader>pt :call Preview_this()<cr>
 " }}} Setup ❮
-
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
