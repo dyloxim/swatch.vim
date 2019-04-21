@@ -32,7 +32,7 @@ function! Adjust_Levels(channel, delta, ...)
   else
     if s:context == 'hidef'
       let group = Get_group('hidef')
-      call Position_cursor('hidef')
+      call Position_cursor_hidef()
       let key = Get_hidef('key') | let value = Get_hidef('value')
       if key == 'gui'
         let new_style_string = Transform_style(value, a:channel, a:delta)
@@ -44,12 +44,12 @@ function! Adjust_Levels(channel, delta, ...)
         call Replace_hidef(key, new_hex)
       endif
     elseif s:context == 'hex'
-      call Position_cursor('hex')
-      let hex = Get_hex() | let new_hex = Transform_hex(hex, a:channel, a:delta)
+      call Position_cursor_hex()
+      let hex = Get_hex('one') | let new_hex = Transform_hex(hex, a:channel, a:delta)
       call Replace_hex(hex, new_hex)
       call Preview_hex(new_hex)
     elseif s:context == 'in_visual'
-      let hex = Get_hex() | let new_hex = Transform_hex(hex, a:channel, a:delta)
+      let hex = Get_hex('one-two') | let new_hex = Transform_hex(hex, a:channel, a:delta)
       call Replace_hex(hex, new_hex)
       call Preview_hex(new_hex)
     endif
@@ -105,7 +105,9 @@ function! Replace_hex(old, new)
 endfunction
 " }}} Replace_hex ❮
 " {{{ Preview_hex ❯
-function! Preview_hex(hex)
+function! Preview_hex(hex, ...)
+  let a:preview_region = get(a:, 1, g:preview_region)
+  
   if g:preview_style == 'fg'
     exe 'hi Visual guifg=#' . a:hex
   elseif g:preview_style == 'bg'
@@ -115,13 +117,13 @@ function! Preview_hex(hex)
     exe 'hi Visual guibg=#' . a:hex
   endif
 
-  if g:preview_region == 'screen'
+  if a:preview_region == 'screen'
     normal! HVL
-  elseif g:preview_region == 'para'
+  elseif a:preview_region == 'para'
     normal! vap
-  elseif g:preview_region == 'WORD'
+  elseif a:preview_region == 'WORD'
     normal! viW
-  elseif g:preview_region == 'word'
+  elseif a:preview_region == 'word'
     normal viw
   endif
 
@@ -136,8 +138,9 @@ endfunction
 " {{{ Reset_visual ❯
 function! Reset_visual()
   if Get_last('cursor_pos') != Get_current('pos')
-    exe 'hi Visual guifg=' . s:OG_visual_hidef[0]
-          \. ' guibg=' . s:OG_visual_hidef[1]
+    echo s:OG_visual_hidef
+    exe 'hi Visual guifg=#' . s:OG_visual_hidef[0]
+          \. ' guibg=#' . s:OG_visual_hidef[1]
           \. ' gui=' . s:OG_visual_hidef[2]
     augroup Swatch
       au!
@@ -146,10 +149,14 @@ function! Reset_visual()
 endfunction
 " }}} Reset_visual ❮
 " {{{ Get_hex ❯
-function! Get_hex()
-  call cursor(s:last_trigger_pos)
-  let hex = expand('<cword>')[-6:]
-  call cursor(s:last_cursor_pos)
+function! Get_hex(context)
+  if a:context == 'one-two'
+    call cursor(s:last_trigger_pos)
+    let hex = expand('<cword>')[-6:]
+    call cursor(s:last_cursor_pos)
+  elseif a:context == 'one'
+    let hex = expand('<cword>')[-6:]
+  endif
   return hex
 endfunction
 " }}} Get_hex ❮
@@ -202,11 +209,11 @@ function! Get_attributes_string(group)
         \})
   let [fg, bg, style] = ['none', 'none', 'none']
   for attr in attributes
-    if match(attr, 'guifg=') != -1 | let fg    = attr[6:] | endif
-    if match(attr, 'guibg=') != -1 | let bg    = attr[6:] | endif
-    if match(attr, 'gui=') != -1   | let style = attr[4:] | endif
+    if attr =~ '\vguifg\=.+' | let fg    = attr[6:] | endif
+    if attr =~ '\vguibg\=.+' | let bg    = attr[6:] | endif
+    if attr =~ '\vgui\=.+' | let style = attr[4:] | endif
   endfor
-  return map([fg, bg, style], {k,v -> substitute(v, '#+', '#', 'g')})
+  return map([fg, bg, style], {k,v -> substitute(v, '#\+', '', 'g')})
 endfunction
 " }}} Get_attributes_string ❮
 " {{{ Get_attributes_tally ❯
@@ -316,31 +323,40 @@ endfunction
 " {{{ Position_cursor ❯
 function! Position_cursor(context)
   let cword = expand('<cword>') | let cWORD = expand('<cWORD>')
-  if a:context == 'hidef'
-    if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|\w+)'
-      normal Ebl
-    else
-      call search('\vgui(fg|bg)?\=') | normal Ebl
-    endif
-    call Set_last('cursor_pos')
-  elseif a:context == 'hex'
-    if cword =~ '\v#[a-fA-F0-9]{6}' 
-          \&& !(getline('.')[col('.')-1] =~ '\s')
-      if getline('.')[col('.')-1] == '#'
-        normal l
-      else
-        normal bl
-      endif
-    else
-      call search('\v#[a-fA-F0-9]{6}')
-        normal l
-    endif
+  if a:context == 'hex'
+
     call Set_last('trigger_pos')
   elseif a:context == 'in_visual'
     call cursor(s:last_trigger_pos)
   endif
 endfunction
 " }}} Position_cursor ❮
+" {{{ Position_cursor_hidef ❯
+function! Position_cursor_hidef(...)
+  let cWORD = expand('<cWORD>')
+  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|\w+)'
+    normal Ebl
+  else
+    call search('\vgui(fg|bg)?\=') | normal Ebl
+  endif
+  call Set_last('cursor_pos')
+endfunction
+" }}} Position_cursor_hidef ❮
+" {{{ Position_cursor_hex ❯
+function! Position_cursor_hex(...)
+  call Set_last('trigger_pos')
+endfunction
+" }}} Position_cursor_hex ❮
+" {{{ Position_cursor_in_visual ❯
+function! Position_cursor_preview(...)
+  let a:arg_name = get(a:, 1, [default value])
+endfunction
+" }}} Position_cursor_preview ❮
+" {{{ Cursor_char ❯
+function! Cursor_char()
+  return getline('.')[col('.')-1]
+endfunction
+" }}} Cursor_char ❮
 " {{{ Get_last ❯
 function! Get_last(value)
   if a:value == 'trigger_pos'
@@ -485,6 +501,9 @@ endfunction
 " }}} Set_Shortcuts ❮
 " {{{ Preview_this ❯
 function! Preview_this()
+  call Position_cursor('hex')
+  let hex = Get_hex('one')
+  call Preview_hex(hex, 'word')
 endfunction
 " }}} Preview_this ❮
 
@@ -493,14 +512,14 @@ let s:last_trigger_pos = [0,0]
 let s:last_cursor_pos = [0,0]
 let g:swatch_step = 5
 let s:in_visual = v:false
-let s:OG_visual_hidef = ['aaaaaa', 'aaaaaa', '']
+let s:OG_visual_hidef = ['000000', 'ffffff', 'none']
 let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
 let g:preview_region = 'screen'
-let g:preview_style = 'both'
+let g:preview_style = 'bg'
 " }}} Variables ❮
 
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
-nnoremap <leader>pt :call Preview_this()
+nnoremap <leader>pt :call Preview_this()<cr>
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
