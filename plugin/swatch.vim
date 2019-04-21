@@ -43,14 +43,7 @@ function! Adjust_Levels(channel, delta, ...)
         call Replace_hidef(key, new_style_string)
       else
         if value[0] =~ '\u' 
-          let color_file = readfile($VIMRUNTIME . '/rgb.txt') 
-          let rgb = [0,0,0]
-          for color_def in color_file
-            if color_def =~ value
-              let rgb = split(color_def)[:-2]
-            endif
-          endfor
-          let value = RGB_to_hex(rgb)
+          let value = Get_hex_from_name(value)
         endif
         let new_hex = Transform_hex(value, a:channel, a:delta)
         call Apply_style(group, key, new_hex)
@@ -230,6 +223,18 @@ endfunction
 " }}} Audit_for_preview ❮
 " }}} Audits ❮
 " {{{ Get & Set ❯
+" {{{ Get_hex_from_name ❯
+function! Get_hex_from_name(name)
+  let binary_color = printf('%B', nvim_get_color_by_name(a:name))
+  let hex = join(map([
+        \binary_color[16:23],
+        \binary_color[8:15], 
+        \binary_color[0:7]
+        \],
+        \{k,v -> printf('%02x', '0b' . v)}), '')
+  return hex
+endfunction
+" }}} Get_hex_from_name ❮
 " {{{ Get_attributes_string ❯
 function! Get_attributes_string(group)
   redir => group_information | silent exe "hi" a:group | redir END
