@@ -1,25 +1,27 @@
 " {{{ New_adjustment ❯
 function! New_adjustment(...)
   if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
-  let attributes = Get_attributes_string(group)
-  let file_path = g:swatch_dir . 'alterations/'
-        \. (exists('g:colors_name') ? g:colors_name : 'default')
-        \. '.vim'
-  if Swatch_Buffer_Open()
-    exe bufwinnr(file_path) . 'wincmd w'
-  else
-    wincmd v | wincmd L | exe '50 wincmd |'
-    if !filereadable(file_path)
-      call Init_alterations_file(file_path)
+  if group != ''
+    let attributes = Get_attributes_string(group)
+    let file_path = g:swatch_dir . 'alterations/'
+          \. (exists('g:colors_name') ? g:colors_name : 'default')
+          \. '.vim'
+    if Swatch_Buffer_Open()
+      exe bufwinnr(file_path) . 'wincmd w'
+    else
+      wincmd v | wincmd L | exe '50 wincmd |'
+      if !filereadable(file_path)
+        call Init_alterations_file(file_path)
+      endif
+      exe 'edit ' . file_path
     endif
-    exe 'edit ' . file_path
+    silent if !search(l:group, 'n')
+      call Insert_group(group, attributes)
+    endif
+    normal zMgg
+    call search(group)
+    normal zv3j
   endif
-  silent if !search(l:group, 'n')
-    call Insert_group(group, attributes)
-  endif
-  normal zMgg
-  call search(group)
-  normal zv3j
 endfunction
 " }}} New_adjustment ❮
 " {{{ Adjust_Levels ❯
@@ -39,9 +41,13 @@ function! Adjust_Levels(channel, delta, ...)
         call Apply_style(group, key, new_style_string)
         call Replace_hidef(key, new_style_string)
       else
-        let new_hex = Transform_hex(value, a:channel, a:delta)
-        call Apply_style(group, key, new_hex)
-        call Replace_hidef(key, new_hex)
+        if value[0] =~ '\u' 
+
+        else
+          let new_hex = Transform_hex(value, a:channel, a:delta)
+          call Apply_style(group, key, new_hex)
+          call Replace_hidef(key, new_hex)
+        endif
       endif
     elseif s:context == 'hex'
       call Position_cursor_hex()
@@ -191,12 +197,14 @@ endfunction
 " {{{ Insert_group ❯
 function! Insert_group(group, attributes)
   let [fg, bg, styles] = a:attributes
+  let [fg, bg] = map([fg, bg],
+        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
   call append(0, 
         \['" {{{ '        . a:group ] +
         \['hi '          . a:group ] +
         \['    \ gui='   . l:styles] +
-        \['    \ guifg=#' . l:fg    ] +
-        \['    \ guibg=#' . l:bg    ] +
+        \['    \ guifg=' . l:fg    ] +
+        \['    \ guibg=' . l:bg    ] +
         \['" }}} '        . a:group ]
         \)
 endfunction
@@ -211,7 +219,7 @@ function! Get_attributes_string(group)
   for attr in attributes
     if attr =~ '\vguifg\=.+' | let fg    = attr[6:] | endif
     if attr =~ '\vguibg\=.+' | let bg    = attr[6:] | endif
-    if attr =~ '\vgui\=.+' | let style = attr[4:] | endif
+    if attr =~ '\vgui\=.+'   | let style = attr[4:] | endif
   endfor
   return map([fg, bg, style], {k,v -> substitute(v, '#\+', '', 'g')})
 endfunction
@@ -282,6 +290,8 @@ function! Get_template()
         \'SpellRare', 'SpellLocal', 'NonText',
         \'MatchParen']
     let [fg, bg, style] = Get_attributes_string(group)
+  let [fg, bg] = map([fg, bg], 
+        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
     let template = template +
           \['"{{{ '        . group] +
           \['hi '          . group] +
@@ -330,9 +340,9 @@ function! Position_cursor(context)
 endfunction
 " }}} Position_cursor ❮
 " {{{ Position_cursor_hidef ❯
-function! Position_cursor_hidef(...)
+function! Position_cursor_hidef()
   let cWORD = expand('<cWORD>')
-  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|\w+)'
+  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|(#*)?\w+)'
     normal Ebl
   else
     call search('\vgui(fg|bg)?\=') | normal Ebl
@@ -424,7 +434,7 @@ function! Get_group(context)
           \["Choose highlight group you wish to alter"]
           \+ l:synlist
           \)
-    return l:syntaxes[l:choice-1][2]
+    return choice == 0 ? '' : l:syntaxes[choice-1][2]
   elseif a:context == 'hidef'
     call Move_cursor([0,1])
     let line_num = search('\vhi(light)? \w+', 'bn')
