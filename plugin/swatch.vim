@@ -195,8 +195,8 @@ function! Insert_group(group, attributes)
         \['" {{{ '        . a:group ] +
         \['hi '          . a:group ] +
         \['    \ gui='   . l:styles] +
-        \['    \ guifg=' . l:fg    ] +
-        \['    \ guibg=' . l:bg    ] +
+        \['    \ guifg=#' . l:fg    ] +
+        \['    \ guibg=#' . l:bg    ] +
         \['" }}} '        . a:group ]
         \)
 endfunction
@@ -286,8 +286,8 @@ function! Get_template()
           \['"{{{ '        . group] +
           \['hi '          . group] +
           \['    \ gui='   . style] +
-          \['    \ guifg=' . fg   ] +
-          \['    \ guibg=' . bg   ] +
+          \['    \ guifg=#' . fg   ] +
+          \['    \ guibg=#' . bg   ] +
           \['"}}} '        . group]
   endfor
   let template = template + ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
@@ -322,9 +322,7 @@ endfunction
 " }}} Get_hidef ❮
 " {{{ Position_cursor ❯
 function! Position_cursor(context)
-  let cword = expand('<cword>') | let cWORD = expand('<cWORD>')
   if a:context == 'hex'
-
     call Set_last('trigger_pos')
   elseif a:context == 'in_visual'
     call cursor(s:last_trigger_pos)
@@ -457,7 +455,7 @@ endfunction
 " }}} Transform_hex ❮
 " {{{ Transform_rgb ❯
 function! Transform_rgb(rgb, channel, delta)
-  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
+  let change = map([0,1,2], {k, v -> v == a:channel ? 1 : 0})
   let new = VectorAdd(
         \copy(a:rgb), 
         \ScaleVector(a:delta * g:swatch_step, l:change)
@@ -501,6 +499,7 @@ endfunction
 " }}} Set_Shortcuts ❮
 " {{{ Preview_this ❯
 function! Preview_this()
+  let s:OG_visual_hidef = Get_attributes_string('Visual')
   call Position_cursor('hex')
   let hex = Get_hex('one')
   call Preview_hex(hex, 'word')
@@ -513,8 +512,8 @@ let s:last_cursor_pos = [0,0]
 let g:swatch_step = 5
 let s:in_visual = v:false
 let s:OG_visual_hidef = ['000000', 'ffffff', 'none']
-let g:swatch_dir = 'Users/Joel/.config/nvim/rc/swatch/'
-let g:preview_region = 'screen'
+let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/'
+let g:preview_region = 'word'
 let g:preview_style = 'bg'
 " }}} Variables ❮
 
