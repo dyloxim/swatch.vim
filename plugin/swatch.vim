@@ -6,9 +6,7 @@ function! New_adjustment(...)
   if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
   if group != ''
     let attributes = Get_attributes_string(group)
-    let file_path = g:swatch_dir . 'alterations/'
-          \. (exists('g:colors_name') ? g:colors_name : 'default')
-          \. '.vim'
+    let file_path = Get_alterations_file()
     if Swatch_Buffer_Open()
       exe bufwinnr(file_path) . 'wincmd w'
     else
@@ -67,7 +65,12 @@ endfunction
 " }}} Adjust_Levels ❮
 " {{{ Preview_this ❯
 function! Preview_this()
-  let s:OG_visual_hidef = Get_attributes_string('Visual')
+  if filereadable(Get_alterations_file())
+    call Swatch_load((exists('g:colors_name') ? 
+          \g:colors_name : 'default'),
+          \'Visual'
+          \)
+    (exists('g:colors_name') ? g:colors_name : 'default')
   call Position_cursor('hex')
   let hex = Get_hex('one')
   call Preview_hex(hex, 'word')
@@ -221,56 +224,94 @@ endfunction
 " }}} Audit_for_preview ❮
 " }}} Audits ❮
 " {{{ Other ❯
-" {{{ Replace_hex ❯
-function! Replace_hex(old, new)
-  exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
-  call cursor(s:last_trigger_pos)
-endfunction
-" }}} Replace_hex ❮
-" {{{ Preview_hex ❯
-function! Preview_hex(hex, ...)
-  let a:preview_region = get(a:, 1, g:preview_region)
-  
-  if g:preview_style == 'fg'
-    exe 'hi Visual guifg=#' . a:hex
-  elseif g:preview_style == 'bg'
-    exe 'hi Visual guibg=#' . a:hex
-  elseif g:preview_style == 'both'
-    exe 'hi Visual guifg=#' . a:hex
-    exe 'hi Visual guibg=#' . a:hex
-  endif
 
-  if a:preview_region == 'screen'
-    normal! HVL
-  elseif a:preview_region == 'para'
-    normal! vap
-  elseif a:preview_region == 'WORD'
-    normal! viW
-  elseif a:preview_region == 'word'
-    normal viw
-  endif
-
-  augroup Swatch
-    au!
-    au CursorMoved * call Reset_visual()
-  augroup END
-
-  call Set_last('cursor_pos')
+" {{{ Get_attributes_string ❯
+function! Get_attributes_string(group)
+  redir => group_information | silent exe "hi" a:group | redir END
+  let attributes = filter(split(l:group_information), {
+        \k,v -> match(v, 'gui') != '-1'
+        \})
+  let [style, fg, bg] = ['none', 'none', 'none']
+  for attr in attributes
+    if attr =~ '\vgui\=.+'   | let style = attr[4:] | endif
+    if attr =~ '\vguifg\=.+' | let fg    = attr[6:] | endif
+    if attr =~ '\vguibg\=.+' | let bg    = attr[6:] | endif
+  endfor
+  return [style] + map([fg, bg], {k,v -> substitute(v, '#\+', '', 'g')})
 endfunction
-" }}} Preview_hex ❮
-" {{{ Reset_visual ❯
-function! Reset_visual()
-  if Get_last('cursor_pos') != Get_current('pos')
-    echo s:OG_visual_hidef
-    exe 'hi Visual guifg=#' . s:OG_visual_hidef[0]
-          \. ' guibg=#' . s:OG_visual_hidef[1]
-          \. ' gui=' . s:OG_visual_hidef[2]
-    augroup Swatch
-      au!
-    augroup END
+" }}} Get_attributes_string ❮
+" {{{ Get_attributes_tally ❯
+" return looks like ['fg', 'bg', 'styles']
+function! Get_style_tally(group)
+  let hlID = hlID(a:group)
+  return [
+        \synIDattr(hlID, 'fg#'),
+        \synIDattr(hlID, 'bg#'),
+        \[(synIDattr(hlID, 'bold') == 1 ? 1 : 0), 
+        \(synIDattr(hlID, 'italic') == 1 ? 1 : 0),
+        \(synIDattr(hlID, 'undercurl') == 1 ? 2 :
+        \(synIDattr(hlID, 'underline') == 1 ? 1 : 0)
+        \)]
+        \]
+endfunction
+" }}} Get_attributes_tally ❮
+" {{{ Get_alterations_file ❯
+function! Get_alterations_file()
+  return g:swatch_dir . 'alterations/'
+        \. Colors_name()
+        \. '.vim'
+endfunction
+" }}} Get_alterations_file ❮
+" {{{ Get_alterations ❯
+function! Get_alterations()
+  if filereadable(Get_alterations_file())
+    let list = filter(readfile(Get_alterations_file()),
+          \{k,v -> v[0] == '"' ? v:false : v:true})
+    let alterations = map(copy(list), 
+          \{k,v -> k % 4 == 0 ? 
+          \[split(list[k])[1], 
+          \split(list[k+1], '=')[1],
+          \split(list[k+2], '=')[1],
+          \split(list[k+3], '=')[1]] :
+          \['remove']})
+    let alterations = filter(alterations,
+          \{k,v -> v == ['remove'] ? v:false : v:true})
+    return map(alterations, {k,v -> [
+          \v[0],
+          \v[1],
+          \substitute(v[2], '#', '', 'g'),
+          \substitute(v[3], '#', '', 'g')
+          \]})
+  else
+    return []
   endif
 endfunction
-" }}} Reset_visual ❮
+" }}} Get_alterations ❮
+" {{{ Get_template ❯
+function! Get_template()
+  let template = ['"↓ Difficult to identify groups ↓']
+  for group in [
+        \'FoldColumn', 'Cursor', 'VertSplit',
+        \'Folded', 'Visual', 'Search',
+        \'IncSearch', 'LineNR', 'CursorLineNR',
+        \'CursorLine', 'SpellBad', 'SpellCap',
+        \'SpellRare', 'SpellLocal', 'NonText',
+        \'MatchParen']
+    let [style, fg, bg] = Get_attributes_string(group)
+  let [fg, bg] = map([fg, bg], 
+        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
+    let template = template +
+          \['"{{{ '        . group] +
+          \['hi '          . group] +
+          \['    \ gui='   . style] +
+          \['    \ guifg=' . fg   ] +
+          \['    \ guibg=' . bg   ] +
+          \['"}}} '        . group]
+  endfor
+  let template = template + ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
+  return template
+endfunction
+" }}} Get_template ❮
 " {{{ Get_hex ❯
 function! Get_hex(context)
   if a:context == 'one-two'
@@ -283,14 +324,76 @@ function! Get_hex(context)
   return hex
 endfunction
 " }}} Get_hex ❮
-" {{{ Swatch_load ❯
-function! Swatch_load(colorscheme)
-  exe 'colo ' . a:colorscheme
-  if filereadable(g:swatch_dir . 'alterations/' . a:colorscheme . '.vim')
-    exe 'source ' . g:swatch_dir . 'alterations/' . a:colorscheme . '.vim'
+" {{{ Get_group ❯
+function! Get_group(context)
+  if a:context == 'cursor'
+    let stack = synstack(line("."),col("."))
+    let syntaxes = []
+    for i in range(0,len(l:stack)-1)
+      let l:syntaxes = add(l:syntaxes,
+            \[
+            \l:stack[l:i],
+            \synIDattr(l:stack[l:i], "name"),
+            \synIDattr(synIDtrans(l:stack[l:i]), "name")
+            \])
+    endfor
+    if len(l:syntaxes) == 0
+      let l:syntaxes = [[0,"Normal","Normal"]]
+    endif
+    let synlist = map(deepcopy(l:syntaxes), {
+          \k,v -> printf("%s. %s -> %s -> %s", k+1, v[0], v[1], 
+          \v[1] == v[2] ? "-" : v[2])
+          \})
+    let choice = inputlist(
+          \["Choose highlight group you wish to alter"]
+          \+ l:synlist
+          \)
+    return choice == 0 ? '' : l:syntaxes[choice-1][2]
+  elseif a:context == 'hidef'
+    call Move_cursor([0,1])
+    let line_num = search('\vhi(light)? \w+', 'bn')
+    call Move_cursor([0,-1])
+    let tokens = split(getline(line_num))
+    return filter(copy(tokens),
+          \{k,v -> k == 0 ? v:false : (tokens[k-1] =~ '\vhi(light)?' ? v:true : v:false)})[0]
   endif
 endfunction
-" }}} Swatch_load ❮
+" }}} Get_group ❮
+" {{{ Get_hidef ❯
+function! Get_hidef(attr)
+  let cWORD = expand('<cWORD>')
+  if a:attr == 'key'
+    return split(cWORD, '=')[0]
+  elseif a:attr == 'value'
+    if cWORD =~ '#'
+      return split(cWORD, '=')[1][1:]
+    else
+      return split(cWORD, '=')[1]
+    endif
+  endif
+endfunction
+" }}} Get_hidef ❮
+" {{{ Colors_name ❯
+function! Colors_name(...)
+  return (exists('g:colors_name') ? g:colors_name : 'default')
+endfunction
+" }}} Colors_name ❮
+
+" {{{ Insert_group ❯
+function! Insert_group(group, attributes)
+  let [style, fg, bg] = a:attributes
+  let [fg, bg] = map([fg, bg],
+        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
+  call append(0, 
+        \['" {{{ '        . a:group ] +
+        \['hi '          . a:group ] +
+        \['    \ gui='   . l:styles] +
+        \['    \ guifg=' . l:fg    ] +
+        \['    \ guibg=' . l:bg    ] +
+        \['" }}} '        . a:group ]
+        \)
+endfunction
+" }}} Insert_group ❮
 " {{{ Init_alterations_file ❯
 function! Init_alterations_file(path)
   let template = Get_template()
@@ -311,76 +414,13 @@ function! Swatch_Buffer_Open()
   endif
 endfunction
 " }}} Swatch_Buffer_Open ❮
-" {{{ Insert_group ❯
-function! Insert_group(group, attributes)
-  let [fg, bg, styles] = a:attributes
-  let [fg, bg] = map([fg, bg],
-        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
-  call append(0, 
-        \['" {{{ '        . a:group ] +
-        \['hi '          . a:group ] +
-        \['    \ gui='   . l:styles] +
-        \['    \ guifg=' . l:fg    ] +
-        \['    \ guibg=' . l:bg    ] +
-        \['" }}} '        . a:group ]
-        \)
+
+" {{{ Replace_hex ❯
+function! Replace_hex(old, new)
+  exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
+  call cursor(s:last_trigger_pos)
 endfunction
-" }}} Insert_group ❮
-" {{{ Get_attributes_string ❯
-function! Get_attributes_string(group)
-  redir => group_information | silent exe "hi" a:group | redir END
-  let attributes = filter(split(l:group_information), {
-        \k,v -> match(v, 'gui') != '-1'
-        \})
-  let [fg, bg, style] = ['none', 'none', 'none']
-  for attr in attributes
-    if attr =~ '\vguifg\=.+' | let fg    = attr[6:] | endif
-    if attr =~ '\vguibg\=.+' | let bg    = attr[6:] | endif
-    if attr =~ '\vgui\=.+'   | let style = attr[4:] | endif
-  endfor
-  return map([fg, bg, style], {k,v -> substitute(v, '#\+', '', 'g')})
-endfunction
-" }}} Get_attributes_string ❮
-" {{{ Get_attributes_tally ❯
-" return looks like ['fg', 'bg', 'styles']
-function! Get_style_tally(group)
-  let hlID = hlID(a:group)
-  return [
-        \synIDattr(hlID, 'fg#'),
-        \synIDattr(hlID, 'bg#'),
-        \[(synIDattr(hlID, 'bold') == 1 ? 1 : 0), 
-        \(synIDattr(hlID, 'italic') == 1 ? 1 : 0),
-        \(synIDattr(hlID, 'undercurl') == 1 ? 2 :
-        \(synIDattr(hlID, 'underline') == 1 ? 1 : 0)
-        \)]
-        \]
-endfunction
-" }}} Get_attributes_tally ❮
-" {{{ Get_template ❯
-function! Get_template()
-  let template = ['"↓ Difficult to identify groups ↓']
-  for group in [
-        \'FoldColumn', 'Cursor', 'VertSplit',
-        \'Folded', 'Visual', 'Search',
-        \'IncSearch', 'LineNR', 'CursorLineNR',
-        \'CursorLine', 'SpellBad', 'SpellCap',
-        \'SpellRare', 'SpellLocal', 'NonText',
-        \'MatchParen']
-    let [fg, bg, style] = Get_attributes_string(group)
-  let [fg, bg] = map([fg, bg], 
-        \{k,v -> v[0] =~ '\u' ||  v == 'none' ? v : '#' . v})
-    let template = template +
-          \['"{{{ '        . group] +
-          \['hi '          . group] +
-          \['    \ gui='   . style] +
-          \['    \ guifg=#' . fg   ] +
-          \['    \ guibg=#' . bg   ] +
-          \['"}}} '        . group]
-  endfor
-  let template = template + ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
-  return template
-endfunction
-" }}} Get_template ❮
+" }}} Replace_hex ❮
 " {{{ Replace_hidef ❯
 function! Replace_hidef(key, value)
   exe 's/' . expand('<cWORD>') . '/' . a:key . '=' 
@@ -390,53 +430,74 @@ endfunction
 " }}} Replace_hidef ❮
 " {{{ Apply_style ❯
 function! Apply_style(group, key, value)
+  echo [a:group, a:key, a:value]
   exe 'hi ' . a:group . ' ' . a:key . '=' . (len(a:key) > 3 ? '#' : '') . a:value
 endfunction
 " }}} Apply_style ❮
-" {{{ Get_hidef ❯
-function! Get_hidef(attr)
-  let cWORD = expand('<cWORD>')
-  if a:attr == 'key'
-    return split(cWORD, '=')[0]
-  elseif a:attr == 'value'
-    if cWORD =~ '#'
-      return split(cWORD, '=')[1][1:]
-    else
-      return split(cWORD, '=')[1]
-    endif
+" {{{ Preview_hex ❯
+function! Preview_hex(hex, ...)
+  let a:preview_region = get(a:, 1, g:preview_region)
+  
+  if g:preview_style == 'fg'
+    exe 'hi Visual guifg=#' . a:hex
+  elseif g:preview_style == 'bg'
+    exe 'hi Visual guibg=#' . a:hex
+  elseif g:preview_style == 'both'
+    exe 'hi Visual guifg=#' . a:hex
+    exe 'hi Visual guibg=#' . a:hex
   endif
-endfunction
-" }}} Get_hidef ❮
-" {{{ Position_cursor ❯
-function! Position_cursor(context)
-  if a:context == 'hex'
-    call Set_last('trigger_pos')
-  elseif a:context == 'in_visual'
-    call cursor(s:last_trigger_pos)
+
+  if a:preview_region == 'screen'
+    normal! HVL
+  elseif a:preview_region == 'para'
+    normal! vap
+  elseif a:preview_region ==# 'WORD'
+    normal! viW
+  elseif a:preview_region == 'word'
+    normal viw
   endif
-endfunction
-" }}} Position_cursor ❮
-" {{{ Position_cursor_hidef ❯
-function! Position_cursor_hidef()
-  let cWORD = expand('<cWORD>')
-  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|(#*)?\w+)'
-    normal Ebl
-  else
-    call search('\vgui(fg|bg)?\=') | normal Ebl
-  endif
+
+  augroup Swatch
+    au!
+    au CursorMoved * call Reset_visual()
+  augroup END
+
   call Set_last('cursor_pos')
 endfunction
-" }}} Position_cursor_hidef ❮
-" {{{ Position_cursor_hex ❯
-function! Position_cursor_hex(...)
-  call Set_last('trigger_pos')
+" }}} Preview_hex ❮
+" {{{ Reset_visual ❯
+function! Reset_visual()
+  if Get_last('cursor_pos') != Get_current('pos')
+    call Swatch_load(Colors_name(), 'Visual')
+    augroup Swatch
+      au!
+    augroup END
+  endif
 endfunction
-" }}} Position_cursor_hex ❮
-" {{{ Position_cursor_in_visual ❯
-function! Position_cursor_preview(...)
-  let a:arg_name = get(a:, 1, [default value])
+" }}} Reset_visual ❮
+" {{{ Swatch_load ❯
+function! Swatch_load(...)
+  let colorscheme = get(a:, 1, Colors_name())
+  let group = get(a:, 2, 'none')
+  if group == 'none'
+    exe 'colo ' . colorscheme
+    if filereadable(Get_alterations_file())
+      exe 'source ' . g:swatch_dir . 'alterations/' . colorscheme . '.vim'
+    endif
+  else | let group = get(a:, 2)
+    let index = index(map(Get_alterations(), {k,v -> v[0]}), group)
+    if index == -1
+      let hidef = ['Visual'] + s:OG_visual_hidef
+    else
+      let hidef = Get_alterations()[index]
+    endif
+    call Apply_style(hidef[0], 'gui', hidef[1])
+    call Apply_style(hidef[0], 'guifg', hidef[2])
+    call Apply_style(hidef[0], 'guibg', hidef[3])
+  endif
 endfunction
-" }}} Position_cursor_preview ❮
+" }}} Swatch_load ❮
+
 " {{{ Cursor_char ❯
 function! Cursor_char()
   return getline('.')[col('.')-1]
@@ -487,41 +548,28 @@ function! On(thing)
   endif
 endfunction
 " }}} On ❮
-" {{{ Get_group ❯
-function! Get_group(context)
-  if a:context == 'cursor'
-    let stack = synstack(line("."),col("."))
-    let syntaxes = []
-    for i in range(0,len(l:stack)-1)
-      let l:syntaxes = add(l:syntaxes,
-            \[
-            \l:stack[l:i],
-            \synIDattr(l:stack[l:i], "name"),
-            \synIDattr(synIDtrans(l:stack[l:i]), "name")
-            \])
-    endfor
-    if len(l:syntaxes) == 0
-      let l:syntaxes = [[0,"Normal","Normal"]]
-    endif
-    let synlist = map(deepcopy(l:syntaxes), {
-          \k,v -> printf("%s. %s -> %s -> %s", k+1, v[0], v[1], 
-          \v[1] == v[2] ? "-" : v[2])
-          \})
-    let choice = inputlist(
-          \["Choose highlight group you wish to alter"]
-          \+ l:synlist
-          \)
-    return choice == 0 ? '' : l:syntaxes[choice-1][2]
-  elseif a:context == 'hidef'
-    call Move_cursor([0,1])
-    let line_num = search('\vhi(light)? \w+', 'bn')
-    call Move_cursor([0,-1])
-    let tokens = split(getline(line_num))
-    return filter(copy(tokens),
-          \{k,v -> k == 0 ? v:false : (tokens[k-1] =~ '\vhi(light)?' ? v:true : v:false)})[0]
+
+" {{{ Position_cursor_hidef ❯
+function! Position_cursor_hidef()
+  let cWORD = expand('<cWORD>')
+  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|(#*)?\w+)'
+    normal Ebl
+  else
+    call search('\vgui(fg|bg)?\=') | normal Ebl
   endif
+  call Set_last('cursor_pos')
 endfunction
-" }}} Get_group ❮
+" }}} Position_cursor_hidef ❮
+" {{{ Position_cursor_hex ❯
+function! Position_cursor_hex(...)
+  call Set_last('trigger_pos')
+endfunction
+" }}} Position_cursor_hex ❮
+" {{{ Position_cursor_in_visual ❯
+function! Position_cursor_preview(...)
+  let a:arg_name = get(a:, 1, [default value])
+endfunction
+" }}} Position_cursor_preview ❮
 " {{{ Move_cursor ❯
 function! Move_cursor(instruction)
   if len(a:instruction) == 2
@@ -532,12 +580,43 @@ function! Move_cursor(instruction)
   endif
 endfunction
 " }}} Move_cursor ❮
+" {{{ Position_cursor ❯
+function! Position_cursor(context)
+  if a:context == 'hex'
+    call Set_last('trigger_pos')
+  elseif a:context == 'in_visual'
+    call cursor(s:last_trigger_pos)
+  endif
+endfunction
+" }}} Position_cursor ❮
+" {{{ Position_cursor_hidef ❯
+function! Position_cursor_hidef()
+  let cWORD = expand('<cWORD>')
+  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|(#*)?\w+)'
+    normal Ebl
+  else
+    call search('\vgui(fg|bg)?\=') | normal Ebl
+  endif
+  call Set_last('cursor_pos')
+endfunction
+" }}} Position_cursor_hidef ❮
+" {{{ Position_cursor_hex ❯
+function! Position_cursor_hex(...)
+  call Set_last('trigger_pos')
+endfunction
+" }}} Position_cursor_hex ❮
+" {{{ Position_cursor_in_visual ❯
+function! Position_cursor_preview(...)
+  let a:arg_name = get(a:, 1, [default value])
+endfunction
+" }}} Position_cursor_preview ❮
+
 " }}} Other ❮
 " {{{ Variables ❯
 let s:last_trigger_pos = [0,0]
 let s:last_cursor_pos = [0,0]
 let s:in_visual = v:false
-let s:OG_visual_hidef = ['000000', 'ffffff', 'none']
+let s:OG_visual_hidef = ['none', '000000', 'ffffff']
 " }}} Variables ❮
 " }}} Backend ❮
 
@@ -546,5 +625,6 @@ call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 nnoremap <leader>pt :call Preview_this()<cr>
 " }}} Setup ❮
+
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
