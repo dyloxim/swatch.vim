@@ -25,53 +25,29 @@ function! New_adjustment(...)
   endif
 endfunction
 " }}} New_adjustment ❮
-" {{{ Adjust_Levels ❯
-function! Adjust_Levels(channel, delta, ...)
+" {{{ Adjust_levels ❯
+function! Adjust_levels(channel, delta, ...)
   let a:audit = get(a:, 1, v:true)
   let s:in_visual = get(a:, 2, v:false)
 
-  if a:audit == v:true
-    call Audit(a:channel, a:delta)
-  else
+  if a:audit == v:true | call Audit(a:channel, a:delta)
+  else " audit already performed
     if s:context == 'hidef'
-      let group = Get_group('hidef')
-      call Position_cursor_hidef()
-      let key = Get_hidef('key') | let value = Get_hidef('value')
-      if key == 'gui'
-        let new_style_string = Transform_style(value, a:channel, a:delta)
-        call Apply_style(group, key, new_style_string)
-        call Replace_hidef(key, new_style_string)
-      else
-        if value[0] =~ '\u' 
-          let value = Get_hex_from_name(value)
-        endif
-        let new_hex = Transform_hex(value, a:channel, a:delta)
-        call Apply_style(group, key, new_hex)
-        call Replace_hidef(key, new_hex)
-      endif
+      call Set_last('trigger_pos')
+      call Adjust_levels_HIDEF(a:channel, a:delta)
     elseif s:context == 'hex'
-      call Position_cursor_hex()
-      let hex = Get_hex('one') | let new_hex = Transform_hex(hex, a:channel, a:delta)
-      call Replace_hex(hex, new_hex)
-      call Preview_hex(new_hex)
+      call Set_last('trigger_pos')
+      call Adjust_levels_HIDEF(a:channel, a:delta)
     elseif s:context == 'in_visual'
-      let hex = Get_hex('one-two') | let new_hex = Transform_hex(hex, a:channel, a:delta)
-      call Replace_hex(hex, new_hex)
-      call Preview_hex(new_hex)
+      call Adjust_levels_IN_VISUAL(a:channel, a:delta)
     endif
   endif
 endfunction
-" }}} Adjust_Levels ❮
+" }}} Adjust_levels ❮
 " {{{ Preview_this ❯
 function! Preview_this()
-  if filereadable(Get_alterations_file())
-    call Swatch_load((exists('g:colors_name') ? 
-          \g:colors_name : 'default'),
-          \'Visual'
-          \)
-    (exists('g:colors_name') ? g:colors_name : 'default')
   call Position_cursor('hex')
-  let hex = Get_hex('one')
+  let hex = Get_hex('here')
   call Preview_hex(hex, 'word')
 endfunction
 " }}} Preview_this ❮
@@ -79,14 +55,14 @@ endfunction
 function! Set_Shortcuts(channels)
   for i in range(0,2)
     exe 'nnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ':call Adjust_Levels(' . l:i . ',1)<cr>'
+          \. ':call Adjust_levels(' . l:i . ',1)<cr>'
     exe 'nnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ':call Adjust_Levels(' . l:i . ',-1)<cr>'
+          \. ':call Adjust_levels(' . l:i . ',-1)<cr>'
     exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',1,'
+          \. ":<c-u>'>call Adjust_levels(" . l:i . ',1,'
           \. 'v:true, v:true)<cr>' 
     exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ":<c-u>'>call Adjust_Levels(" . l:i . ',-1,'
+          \. ":<c-u>'>call Adjust_levels(" . l:i . ',-1,'
           \. 'v:true, v:true)<cr>'
   endfor
 endfunction
@@ -100,136 +76,103 @@ let g:preview_style = 'bg'
 " }}} API ❮
 
 " {{{ Backend ❯
-" {{{ Computations ❯
-" {{{ Style_encode ❯
-function! Style_encode(style_string)
-  let styles = split(a:style_string, ',')
-  let tally = [0,0,0]
-  for style in styles
-    if style =~ 'bold'      | let tally[0] = 1 | endif
-    if style =~ 'italic'    | let tally[1] = 1 | endif
-    if style =~ 'underline' | let tally[2] = 1 | endif
-    if style =~ 'undercurl' | let tally[2] = 2 | endif
-  endfor
-  return tally
-endfunction
-" }}} Style_encode ❮
-" {{{ Style_decode ❯
-function! Style_decode(tally)
-  if a:tally == [0,0,0]
-    return 'none'
-  else
-    return
-          \ (a:tally[0] == 1 ? 'bold,'      : '') .
-          \ (a:tally[1] == 1 ? 'italic,'    : '') .
-          \ (a:tally[2] == 1 ? 'underline,' : '') .
-          \ (a:tally[2] == 2 ? 'undercurl,' : '')
-  endif
-endfunction
-" }}} Style_decode ❮
-" {{{ Transform_style ❯
-function! Transform_style(style_string, channel, delta)
-  let tally = Style_encode(a:style_string)
-  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
-  let tally = VectorAdd(
-        \copy(l:tally), 
-        \ScaleVector(a:delta/abs(a:delta), l:change)
-        \)
-  let tally = VectorAdd(tally, [2,2,3])
-  let tally[0] = tally[0] % 2 | let tally[1] = tally[1] % 2
-  let tally[2] = tally[2] % 3
-  return Style_decode(tally)
-endfunction
-" }}} Transform_style ❮
-" {{{ Transform_hex ❯
-function! Transform_hex(hex, channel, delta)
-  let rgb = Hex_to_RGB(a:hex)
-  let new_rgb = Transform_rgb(rgb, a:channel, a:delta)
-  let new_hex = RGB_to_hex(new_rgb)
-  return new_hex
-endfunction
-" }}} Transform_hex ❮
-" {{{ Transform_rgb ❯
-function! Transform_rgb(rgb, channel, delta)
-  let change = map([0,1,2], {k, v -> v == a:channel ? 1 : 0})
-  let new = VectorAdd(
-        \copy(a:rgb), 
-        \ScaleVector(a:delta * g:swatch_step, l:change)
-        \)
-  return map(new, {k,v -> Constrain_value(v, [0,255])})
-endfunction
-" }}} Transform_rgb ❮
-" {{{ Hex_to_RGB ❯
-function! Hex_to_RGB(hex)
-  return map([a:hex[0:1], a:hex[2:3], a:hex[4:5]], 
-        \{k,v -> printf('%d', str2nr(v, '16'))}
-        \)
-endfunction
-" }}} Hex_to_RGB ❮
-" {{{ RGB_to_hex ❯
-function! RGB_to_hex(rgb)
-  return join(map(a:rgb, {k,v -> printf('%02x', v)}), '')
-endfunction
-" }}} RGB_to_hex ❮
-" {{{ Constrain_value ❯
-function! Constrain_value(x, range)
-  let min = a:range[0] | let max = a:range[1]
-  return min([max([a:x, l:min]), l:max])
-endfunction
-" }}} Constrain_value ❮
-" }}} Computations ❮
 " {{{ Audits ❯
 " {{{ Audit ❯
 function! Audit(channel, delta)
   if s:in_visual == v:true
-    let s:context = 'in_visual'
-    call Audit_for_preview(a:channel, a:delta)
+    let s:context = 'in_visual' | call Audit_IN_VISUAL(a:channel, a:delta)
   elseif On('hidef')
-    let s:context = 'hidef'
-    call Audit_for_hidef(a:channel, a:delta)
+    call Position_cursor_ON_HIDEF()
+    let s:context = 'hidef' | call Audit_HIDEF(a:channel, a:delta)
   elseif On('hex')
-    let s:context = 'hex'
-    call Audit_for_hex(a:channel, a:delta)
+    call Position_cursor_ON_HEX()
+    let s:context = 'hex' | call Audit_HEX(a:channel, a:delta)
+  elseif Has(getline('.'), 'hidef')
+    call Position_cursor_HAS_HIDEF()
+    let s:context = 'hidef' | call Audit_HIDEF(a:channel, a:delta)
+  elseif Has(getline('.'), 'hex')
+    call Position_cursor_HAS_HEX()
+    let s:context = 'hex' | call Audit_HEX(a:channel, a:delta)
   else
     echo 'on nothing'
   endif
 endfunction
 " }}} Audit ❮
-" {{{ Audit_for_hidef ❯
-function! Audit_for_hidef(channel, delta)
+" {{{ Audit_HIDEF ❯
+function! Audit_HIDEF(channel, delta)
   if Get_last('trigger_pos')[0] == Get_current('line')
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false)
+    undojoin | call Adjust_levels_HIDEF(a:channel, a:delta)
   else
     call Set_last('trigger_pos')
-    call Adjust_Levels(a:channel, a:delta, v:false, 'hidef')
+    call Adjust_levels_HIDEF(a:channel, a:delta)
   endif
 endfunction
-" }}} Audit_for_hidef ❮
-" {{{ Audit_for_hex ❯
-function! Audit_for_hex(channel, delta)
-  let s:OG_visual_hidef = Get_attributes_string('Visual')
-  echom join(s:OG_visual_hidef, ' ')
-  call Adjust_Levels(a:channel, a:delta, v:false, 'hex')
+" }}} Audit_HIDEF ❮
+" {{{ Audit_HEX ❯
+function! Audit_HEX(channel, delta)
+  call Set_last('trigger_pos')
+  call Adjust_levels_HEX(a:channel, a:delta)
 endfunction
-" }}} Audit_for_hex ❮
-" {{{ Audit_for_preview ❯
-function! Audit_for_preview(channel, delta)
+" }}} Audit_HEX ❮
+" {{{ Audit_IN_VISUAL ❯
+function! Audit_IN_VISUAL(channel, delta)
   if Get_last('cursor_pos')[0] == Get_current('pos')[0]
-    undojoin | call Adjust_Levels(a:channel, a:delta, v:false, 'in_visual')
+    undojoin | call Adjust_levels_IN_VISUAL(a:channel, a:delta)
   else
-    " echo 'No color selected'
+    echo 'No color selected'
   endif
 endfunction
-" }}} Audit_for_preview ❮
+" }}} Audit_IN_VISUAL ❮
 " }}} Audits ❮
+" {{{ Adjust_levels ❯
+" {{{ Adjust_levels_HIDEF ❯
+function! Adjust_levels_HIDEF(channel, delta)
+  let group = Get_group('hidef')
+  let key = Get_hidef('key') | let value = Get_hidef('value')
+  if key == 'gui'
+    let new_style_string = Transform_style(value, a:channel, a:delta)
+    call Apply_style(group, key, new_style_string)
+    call Replace_hidef(key, new_style_string)
+  else " key is fg or bg
+    if value[0] =~ '\u' 
+      let value = Get_hex_from_name(value)
+    endif
+    let new_hex = Transform_hex(value, a:channel, a:delta)
+    call Apply_style(group, key, new_hex)
+    call Replace_hidef(key, new_hex)
+  endif
+endfunction
+" }}} Adjust_levels_HIDEF ❮
+" {{{ Adjust_levels_HEX ❯
+function! Adjust_levels_HEX(channel, delta)
+  let old = Get_hex('here') | let new = Transform_hex(old, a:channel, a:delta)
+  let name_color = nvim_get_color_by_name(old)
+  if name_color != -1
+    let new = Get_hex_from_name(old)
+    call Replace_hex(old, '#' . new)
+  else
+    call Replace_hex(old, new)
+  endif
+  call Preview_hex(new)
+endfunction
+" }}} Adjust_levels_HEX ❮
+" {{{ Adjust_levels_IN_VISUAL ❯
+function! Adjust_levels_IN_VISUAL(channel, delta)
+  let hex = Get_hex('elsewhere') | let new_hex = Transform_hex(hex, a:channel, a:delta)
+  call Replace_hex(hex, new_hex)
+  call Preview_hex(new_hex)
+endfunction
+" }}} Adjust_levels_IN_VISUAL ❮
+" }}} Adjust_levels ❮
 " {{{ Get & Set ❯
 " {{{ Get_hex_from_name ❯
 function! Get_hex_from_name(name)
-  let binary_color = printf('%B', nvim_get_color_by_name(a:name))
+  let binary_color = printf('%024b', nvim_get_color_by_name(a:name))
+  echo binary_color
   let hex = join(map([
-        \binary_color[16:23],
+        \binary_color[0:7],
         \binary_color[8:15], 
-        \binary_color[0:7]
+        \binary_color[16:23]
         \],
         \{k,v -> printf('%02x', '0b' . v)}), '')
   return hex
@@ -324,12 +267,12 @@ endfunction
 " }}} Get_template ❮
 " {{{ Get_hex ❯
 function! Get_hex(context)
-  if a:context == 'one-two'
+  if a:context == 'here'
+    let hex = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
+  elseif a:context == 'elsewhere'
     call cursor(s:last_trigger_pos)
-    let hex = expand('<cword>')[-6:]
+    let hex = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
     call cursor(s:last_cursor_pos)
-  elseif a:context == 'one'
-    let hex = expand('<cword>')[-6:]
   endif
   return hex
 endfunction
@@ -420,24 +363,6 @@ function! Get_current(thing)
   endif
 endfunction
 " }}} Get_current ❮
-" {{{ On ❯
-function! On(thing)
-  let line = getline('.')
-  if a:thing == 'hidef'
-    if line =~ '\vgui(fg|bg)?\='
-      return v:true
-    else
-      return v:false
-    endif
-  elseif a:thing == 'hex'
-    if line =~ '\v#[a-fA-F0-9]{6}'
-      return v:true
-    else
-      return v:false
-    endif
-  endif
-endfunction
-" }}} On ❮
 " }}} Get & Set ❮
 " {{{ Windows & Files ❯
 " {{{ Insert_group ❯
@@ -492,21 +417,29 @@ endfunction
 " }}} Replace_hidef ❮
 " {{{ Apply_style ❯
 function! Apply_style(group, key, value)
-  echo [a:group, a:key, a:value]
-  exe 'hi ' . a:group . ' ' . a:key . '=' . (len(a:key) > 3 ? '#' : '') . a:value
+  let value =  a:value =~ '\u' || 
+        \a:value =~ '\v(none|fg|bg|bold|italic|underline|undercurl|reverse)' ?
+        \ a:value :
+        \ '#' . a:value
+  let value = substitute(value, '\v^(.*)$', '\u\1', '')
+  exe 'hi ' . a:group . ' ' . a:key . '=' . value
 endfunction
 " }}} Apply_style ❮
 " {{{ Preview_hex ❯
 function! Preview_hex(hex, ...)
+  let s:OG_visual_hidef = Get_attributes_string('Visual')
   let a:preview_region = get(a:, 1, g:preview_region)
-  
+  let hex =  a:hex =~ '\u' || a:hex =~ '\v(none|fg|bg)' ?
+        \ a:hex :
+        \ '#' . a:hex
+
   if g:preview_style == 'fg'
-    exe 'hi Visual guifg=#' . a:hex
+    exe 'hi Visual guifg=' . hex
   elseif g:preview_style == 'bg'
-    exe 'hi Visual guibg=#' . a:hex
+    exe 'hi Visual guibg=' . hex
   elseif g:preview_style == 'both'
-    exe 'hi Visual guifg=#' . a:hex
-    exe 'hi Visual guibg=#' . a:hex
+    exe 'hi Visual guifg=' . hex
+    exe 'hi Visual guibg=' . hex
   endif
 
   if a:preview_region == 'screen'
@@ -539,8 +472,8 @@ endfunction
 " }}} Reset_visual ❮
 " {{{ Swatch_load ❯
 function! Swatch_load(...)
-  let colorscheme = get(a:, 1, Colors_name())
-  let group = get(a:, 2, 'none')
+  let colorscheme = get(a:, 1, Colors_name()) | let group = get(a:, 2, 'none')
+
   if group == 'none'
     exe 'colo ' . colorscheme
     if filereadable(Get_alterations_file())
@@ -561,27 +494,70 @@ endfunction
 " }}} Swatch_load ❮
 " }}} Replace / Load styles ❮
 " {{{ Cursor ❯
-" {{{ Position_cursor_hidef ❯
-function! Position_cursor_hidef()
-  let cWORD = expand('<cWORD>')
-  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|(#*)?\w+)'
+" {{{ Has ❯
+function! Has(line, feature)
+  if a:feature == 'hidef'
+    if a:line =~ '\vgui(fg|bg)?\=' | return v:true | else | return v:false | endif
+  elseif a:feature == 'hex'
+    if a:line =~ '\v#[a-fA-F0-9]{6}' | return v:true | else | return v:false | endif
+  endif
+endfunction
+" }}} Has ❮
+" {{{ On ❯
+function! On(feature)
+  let cword = expand('<cWORD>')
+  if a:feature == 'hidef'
+    if cword =~ '\vgui(fg|bg)?\=' | return v:true | else | return v:false | endif
+  elseif a:feature == 'hex'
+    if cword =~ '\v#[a-fA-F0-9]{6}' ||
+          \ nvim_get_color_by_name(cword) != -1
+      return v:true
+    else
+      return v:false
+    endif
+  endif
+endfunction
+" }}} On ❮
+" {{{ Position_cursor_ON_HIDEF ❯
+function! Position_cursor_ON_HIDEF()
+  let cword = expand('<cword>')
+  if cword =~ 'gui'
     normal Ebl
   else
-    call search('\vgui(fg|bg)?\=') | normal Ebl
+    if Cursor_char() != cword[-1] && col('.') != col('$') - 1
+      call search('\v(>)\@=', '')
+    endif
+    normal bl
   endif
-  call Set_last('cursor_pos')
 endfunction
-" }}} Position_cursor_hidef ❮
-" {{{ Position_cursor_hex ❯
-function! Position_cursor_hex(...)
-  call Set_last('trigger_pos')
+" }}} Position_cursor_ON_HIDEF ❮
+" {{{ Position_cursor_ON_HEX ❯
+function! Position_cursor_ON_HEX()
+  let cword = expand('<cword>')
+  if cword =~ '#' 
+    if Cursor_char() != '#'
+    else
+      normal l
+    endif
+  else
+    if Cursor_char() != cword[-1] && col('.') != col('$') - 1
+      call search('\v(>)\@=', '')
+    endif
+    normal bl
+  endif
 endfunction
-" }}} Position_cursor_hex ❮
-" {{{ Position_cursor_in_visual ❯
-function! Position_cursor_preview(...)
-  let a:arg_name = get(a:, 1, [default value])
+" }}} Position_cursor_ON_HEX ❮
+" {{{ Position_cursor_HAS_HIDEF ❯
+function! Position_cursor_HAS_HIDEF()
+  call search('=')
+  call Position_cursor_ON_HIDEF()
 endfunction
-" }}} Position_cursor_preview ❮
+" }}} Position_cursor_HAS_HIDEF ❮
+" {{{ Position_cursor_HAS_HEX ❯
+function! Position_cursor_HAS_HEX()
+  call search('#') | normal l
+endfunction
+" }}} Position_cursor_HAS_HEX ❮
 " {{{ Move_cursor ❯
 function! Move_cursor(instruction)
   if len(a:instruction) == 2
@@ -592,37 +568,85 @@ function! Move_cursor(instruction)
   endif
 endfunction
 " }}} Move_cursor ❮
-" {{{ Position_cursor ❯
-function! Position_cursor(context)
-  if a:context == 'hex'
-    call Set_last('trigger_pos')
-  elseif a:context == 'in_visual'
-    call cursor(s:last_trigger_pos)
-  endif
-endfunction
-" }}} Position_cursor ❮
-" {{{ Position_cursor_hidef ❯
-function! Position_cursor_hidef()
-  let cWORD = expand('<cWORD>')
-  if cWORD =~ '\vgui(fg|bg)?\=(#[a-fA-F0-9]{6}|(#*)?\w+)'
-    normal Ebl
-  else
-    call search('\vgui(fg|bg)?\=') | normal Ebl
-  endif
-  call Set_last('cursor_pos')
-endfunction
-" }}} Position_cursor_hidef ❮
-" {{{ Position_cursor_hex ❯
-function! Position_cursor_hex(...)
-  call Set_last('trigger_pos')
-endfunction
-" }}} Position_cursor_hex ❮
-" {{{ Position_cursor_in_visual ❯
-function! Position_cursor_preview(...)
-  let a:arg_name = get(a:, 1, [default value])
-endfunction
-" }}} Position_cursor_preview ❮
 " }}} Cursor ❮
+" {{{ Computations ❯
+" {{{ Style_encode ❯
+function! Style_encode(style_string)
+  let styles = split(a:style_string, ',')
+  let tally = [0,0,0]
+  for style in styles
+    if style =~ 'bold'      | let tally[0] = 1 | endif
+    if style =~ 'italic'    | let tally[1] = 1 | endif
+    if style =~ 'underline' | let tally[2] = 1 | endif
+    if style =~ 'undercurl' | let tally[2] = 2 | endif
+  endfor
+  return tally
+endfunction
+" }}} Style_encode ❮
+" {{{ Style_decode ❯
+function! Style_decode(tally)
+  if a:tally == [0,0,0]
+    return 'none'
+  else
+    return
+          \ (a:tally[0] == 1 ? 'bold,'      : '') .
+          \ (a:tally[1] == 1 ? 'italic,'    : '') .
+          \ (a:tally[2] == 1 ? 'underline,' : '') .
+          \ (a:tally[2] == 2 ? 'undercurl,' : '')
+  endif
+endfunction
+" }}} Style_decode ❮
+" {{{ Transform_style ❯
+function! Transform_style(style_string, channel, delta)
+  let tally = Style_encode(a:style_string)
+  let change = [[1,0,0],[0,1,0],[0,0,1]][a:channel]
+  let tally = VectorAdd(
+        \copy(l:tally), 
+        \ScaleVector(a:delta/abs(a:delta), l:change)
+        \)
+  let tally = VectorAdd(tally, [2,2,3])
+  let tally[0] = tally[0] % 2 | let tally[1] = tally[1] % 2
+  let tally[2] = tally[2] % 3
+  return Style_decode(tally)
+endfunction
+" }}} Transform_style ❮
+" {{{ Transform_hex ❯
+function! Transform_hex(hex, channel, delta)
+  let rgb = Hex_to_RGB(a:hex)
+  let new_rgb = Transform_rgb(rgb, a:channel, a:delta)
+  let new_hex = RGB_to_hex(new_rgb)
+  return new_hex
+endfunction
+" }}} Transform_hex ❮
+" {{{ Transform_rgb ❯
+function! Transform_rgb(rgb, channel, delta)
+  let change = map([0,1,2], {k, v -> v == a:channel ? 1 : 0})
+  let new = VectorAdd(
+        \copy(a:rgb), 
+        \ScaleVector(a:delta * g:swatch_step, l:change)
+        \)
+  return map(new, {k,v -> Constrain_value(v, [0,255])})
+endfunction
+" }}} Transform_rgb ❮
+" {{{ Hex_to_RGB ❯
+function! Hex_to_RGB(hex)
+  return map([a:hex[0:1], a:hex[2:3], a:hex[4:5]], 
+        \{k,v -> printf('%d', str2nr(v, '16'))}
+        \)
+endfunction
+" }}} Hex_to_RGB ❮
+" {{{ RGB_to_hex ❯
+function! RGB_to_hex(rgb)
+  return join(map(a:rgb, {k,v -> printf('%02x', v)}), '')
+endfunction
+" }}} RGB_to_hex ❮
+" {{{ Constrain_value ❯
+function! Constrain_value(x, range)
+  let min = a:range[0] | let max = a:range[1]
+  return min([max([a:x, l:min]), l:max])
+endfunction
+" }}} Constrain_value ❮
+" }}} Computations ❮
 " {{{ Variables ❯
 let s:last_trigger_pos = [0,0]
 let s:last_cursor_pos = [0,0]
