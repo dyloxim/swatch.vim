@@ -19,9 +19,9 @@ function! New_adjustment(...)
     silent if !search(l:group, 'n')
       call Insert_group(group, attributes)
     endif
-    normal zMgg
+    normal! zMgg
     call search(group)
-    normal zv3j
+    normal! zv3j
   endif
 endfunction
 " }}} New_adjustment ❮
@@ -74,7 +74,6 @@ let g:preview_region = 'word'
 let g:preview_style = 'bg'
 " }}} Variables ❮
 " }}} API ❮
-
 " {{{ Backend ❯
 " {{{ Audits ❯
 " {{{ Audit ❯
@@ -168,7 +167,6 @@ endfunction
 " {{{ Get_hex_from_name ❯
 function! Get_hex_from_name(name)
   let binary_color = printf('%024b', nvim_get_color_by_name(a:name))
-  echo binary_color
   let hex = join(map([
         \binary_color[0:7],
         \binary_color[8:15], 
@@ -243,12 +241,13 @@ endfunction
 " {{{ Get_template ❯
 function! Get_template()
   let template = ['"↓ Difficult to identify groups ↓']
+        \ + ['" to see a complete list of groups see the file :so $VIMRUNTIME/syntax/hitest.vim']
   for group in [
-        \'FoldColumn', 'Cursor', 'VertSplit',
         \'Folded', 'Visual', 'Search',
         \'IncSearch', 'LineNR', 'CursorLineNR',
         \'CursorLine', 'SpellBad', 'SpellCap',
         \'SpellRare', 'SpellLocal', 'NonText',
+        \'FoldColumn', 'Cursor', 'VertSplit',
         \'MatchParen']
     let [style, fg, bg] = Get_attributes_string(group)
   let [fg, bg] = map([fg, bg], 
@@ -291,7 +290,7 @@ function! Get_group(context)
             \])
     endfor
     if len(l:syntaxes) == 0
-      let l:syntaxes = [[0,"Normal","Normal"]]
+      let l:syntaxes = [[0,"normal","normal"]]
     endif
     let synlist = map(deepcopy(l:syntaxes), {
           \k,v -> printf("%s. %s -> %s -> %s", k+1, v[0], v[1], 
@@ -443,13 +442,13 @@ function! Preview_hex(hex, ...)
   endif
 
   if a:preview_region == 'screen'
-    normal! HVL
+    normal!! HVL
   elseif a:preview_region == 'para'
-    normal! vap
+    normal!! vap
   elseif a:preview_region ==# 'WORD'
-    normal! viW
+    normal!! viW
   elseif a:preview_region == 'word'
-    normal viw
+    normal! viw
   endif
 
   augroup Swatch
@@ -522,12 +521,12 @@ endfunction
 function! Position_cursor_ON_HIDEF()
   let cword = expand('<cword>')
   if cword =~ 'gui'
-    normal Ebl
+    normal! Ebl
   else
     if Cursor_char() != cword[-1] && col('.') != col('$') - 1
       call search('\v(>)\@=', '')
     endif
-    normal bl
+    normal! bl
   endif
 endfunction
 " }}} Position_cursor_ON_HIDEF ❮
@@ -537,13 +536,13 @@ function! Position_cursor_ON_HEX()
   if cword =~ '#' 
     if Cursor_char() != '#'
     else
-      normal l
+      normal! l
     endif
   else
     if Cursor_char() != cword[-1] && col('.') != col('$') - 1
       call search('\v(>)\@=', '')
     endif
-    normal bl
+    normal! bl
   endif
 endfunction
 " }}} Position_cursor_ON_HEX ❮
@@ -555,7 +554,7 @@ endfunction
 " }}} Position_cursor_HAS_HIDEF ❮
 " {{{ Position_cursor_HAS_HEX ❯
 function! Position_cursor_HAS_HEX()
-  call search('#') | normal l
+  call search('#') | normal! l
 endfunction
 " }}} Position_cursor_HAS_HEX ❮
 " {{{ Move_cursor ❯
@@ -654,8 +653,7 @@ let s:in_visual = v:false
 let s:OG_visual_hidef = ['none', '000000', 'ffffff']
 " }}} Variables ❮
 " }}} Backend ❮
-
-" {{{ Default Setup ❯
+" {{{ Setup ❯
 call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
 nnoremap <leader>ss :call New_adjustment()<cr>
 nnoremap <leader>pt :call Preview_this()<cr>
