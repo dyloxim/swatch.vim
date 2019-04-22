@@ -1,8 +1,8 @@
 " Swatch: a great plugin by Joel Strouts
 
 " {{{ API ❯
-" {{{ New_adjustment ❯
-function! New_adjustment(...)
+" {{{ Swatch_new_adjustment ❯
+function! Swatch_new_adjustment(...)
   if len(a:) < 5 | let group = Get_group('cursor') | else | let group = get(a:, 1) | endif
   if group != ''
     let attributes = Get_attributes_string(group)
@@ -24,9 +24,9 @@ function! New_adjustment(...)
     normal! zv3j
   endif
 endfunction
-" }}} New_adjustment ❮
-" {{{ Adjust_levels ❯
-function! Adjust_levels(channel, delta, ...)
+" }}} Swatch_new_adjustment ❮
+" {{{ Swatch_adjust_levels ❯
+function! Swatch_adjust_levels(channel, delta, ...)
   let a:audit = get(a:, 1, v:true)
   let s:in_visual = get(a:, 2, v:false)
 
@@ -37,41 +37,45 @@ function! Adjust_levels(channel, delta, ...)
       call Adjust_levels_HIDEF(a:channel, a:delta)
     elseif s:context == 'hex'
       call Set_last('trigger_pos')
-      call Adjust_levels_HIDEF(a:channel, a:delta)
+      call Adjust_levels_HEX(a:channel, a:delta)
     elseif s:context == 'in_visual'
       call Adjust_levels_IN_VISUAL(a:channel, a:delta)
     endif
   endif
 endfunction
-" }}} Adjust_levels ❮
-" {{{ Preview_this ❯
-function! Preview_this()
-  call Position_cursor('hex')
+" }}} Swatch_adjust_levels ❮
+" {{{ Swatch_preview_this ❯
+function! Swatch_preview_this()
+  if On('hex')
+    call Position_cursor_ON_HEX()
+  elseif Has(getline('.'), 'hex')
+    call Position_cursor_HAS_HIDEF()
+  endif
   let hex = Get_hex('here')
   call Preview_hex(hex, 'word')
 endfunction
-" }}} Preview_this ❮
-" {{{ Set_Shortcuts ❯
-function! Set_Shortcuts(channels)
+" }}} Swatch_preview_this ❮
+" {{{ Swatch_set_shortcuts ❯
+function! Swatch_set_shortcuts(channels)
   for i in range(0,2)
     exe 'nnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ':call Adjust_levels(' . l:i . ',1)<cr>'
+          \. ':call Swatch_adjust_levels(' . l:i . ',1)<cr>'
     exe 'nnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ':call Adjust_levels(' . l:i . ',-1)<cr>'
+          \. ':call Swatch_adjust_levels(' . l:i . ',-1)<cr>'
     exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
-          \. ":<c-u>'>call Adjust_levels(" . l:i . ',1,'
+          \. ":<c-u>'>call Swatch_adjust_levels(" . l:i . ',1,'
           \. 'v:true, v:true)<cr>' 
     exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
-          \. ":<c-u>'>call Adjust_levels(" . l:i . ',-1,'
+          \. ":<c-u>'>call Swatch_adjust_levels(" . l:i . ',-1,'
           \. 'v:true, v:true)<cr>'
   endfor
 endfunction
-" }}} Set_Shortcuts ❮
+" }}} Swatch_set_shortcuts ❮
 " {{{ Variables ❯
 let g:swatch_step = 5
-let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/'
-let g:preview_region = 'word'
-let g:preview_style = 'bg'
+let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/user_data/'
+let g:swatch_preview_region = 'word'
+let g:swatch_preview_style = 'bg'
 " }}} Variables ❮
 " }}} API ❮
 " {{{ Backend ❯
@@ -122,6 +126,24 @@ function! Audit_IN_VISUAL(channel, delta)
   endif
 endfunction
 " }}} Audit_IN_VISUAL ❮
+" {{{ Is_color ❯
+function! Is_color(name)
+  if nvim_get_color_by_name(a:name) != -1
+    return v:true
+  else
+    return v:false
+  endif
+endfunction
+" }}} Is_color ❮
+" {{{ Is_style ❯
+function! Is_style(name)
+  if a:name =~ '\v(none|fg|bg|bold|italic|underline|undercurl|reverse)'
+    return v:true
+  else
+    return v:false
+  endif
+endfunction
+" }}} Is_style ❮
 " }}} Audits ❮
 " {{{ Adjust_levels ❯
 " {{{ Adjust_levels_HIDEF ❯
@@ -217,13 +239,13 @@ endfunction
 function! Get_alterations()
   if filereadable(Get_alterations_file())
     let list = filter(readfile(Get_alterations_file()),
-          \{k,v -> v[0] == '"' ? v:false : v:true})
+          \{k,v -> v[0] == '"' || v =~ '^\s*$' ? v:false : v:true})
     let alterations = map(copy(list), 
           \{k,v -> k % 4 == 0 ? 
-          \[split(list[k])[1], 
-          \split(list[k+1], '=')[1],
-          \split(list[k+2], '=')[1],
-          \split(list[k+3], '=')[1]] :
+          \[split(list[k])[-1], 
+          \split(list[k+1], '=')[-1],
+          \split(list[k+2], '=')[-1],
+          \split(list[k+3], '=')[-1]] :
           \['remove']})
     let alterations = filter(alterations,
           \{k,v -> v == ['remove'] ? v:false : v:true})
@@ -241,7 +263,6 @@ endfunction
 " {{{ Get_template ❯
 function! Get_template()
   let template = ['"↓ Difficult to identify groups ↓']
-        \ + ['" to see a complete list of groups see the file :so $VIMRUNTIME/syntax/hitest.vim']
   for group in [
         \'Folded', 'Visual', 'Search',
         \'IncSearch', 'LineNR', 'CursorLineNR',
@@ -250,17 +271,18 @@ function! Get_template()
         \'FoldColumn', 'Cursor', 'VertSplit',
         \'MatchParen']
     let [style, fg, bg] = Get_attributes_string(group)
-  let [fg, bg] = map([fg, bg], 
+    let [fg, bg] = map([fg, bg], 
         \{k,v -> v[0] =~ '\u' ||  v =~ '\v(none|fg|bg)' ? v : '#' . v})
     let template = template +
-          \['"{{{ '        . group] +
-          \['hi '          . group] +
-          \['    \ gui='   . style] +
-          \['    \ guifg=' . fg   ] +
-          \['    \ guibg=' . bg   ] +
-          \['"}}} '        . group]
+        \['"{{{ '        . group] +
+        \['hi '          . group] +
+        \['    \ gui='   . style] +
+        \['    \ guifg=' . fg   ] +
+        \['    \ guibg=' . bg   ] +
+        \['"}}} '        . group]
   endfor
-  let template = template + ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
+  let template = template + ['" to see a complete list of groups see the file :so $VIMRUNTIME/syntax/hitest.vim'] + [''] +
+        \ ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
   return template
 endfunction
 " }}} Get_template ❮
@@ -411,13 +433,13 @@ endfunction
 function! Replace_hidef(key, value)
   exe 's/' . expand('<cWORD>') . '/' . a:key . '=' 
         \. (len(a:key) > 3 ? '#' : '') . a:value
-  call cursor(s:last_cursor_pos)
+  call cursor(s:last_trigger_pos)
 endfunction
 " }}} Replace_hidef ❮
 " {{{ Apply_style ❯
 function! Apply_style(group, key, value)
-  let value =  a:value =~ '\u' || 
-        \a:value =~ '\v(none|fg|bg|bold|italic|underline|undercurl|reverse)' ?
+  let value =  Is_color(a:value) || 
+        \Is_style(a:value) ?
         \ a:value :
         \ '#' . a:value
   let value = substitute(value, '\v^(.*)$', '\u\1', '')
@@ -427,16 +449,15 @@ endfunction
 " {{{ Preview_hex ❯
 function! Preview_hex(hex, ...)
   let s:OG_visual_hidef = Get_attributes_string('Visual')
-  let a:preview_region = get(a:, 1, g:preview_region)
-  let hex =  a:hex =~ '\u' || a:hex =~ '\v(none|fg|bg)' ?
-        \ a:hex :
-        \ '#' . a:hex
+  let a:preview_region = get(a:, 1, g:swatch_preview_region)
+  let hex = Is_color(a:hex) || Is_style(a:hex) ? a:hex : '#' . a:hex
+  echo hex
 
-  if g:preview_style == 'fg'
+  if g:swatch_preview_style == 'fg'
     exe 'hi Visual guifg=' . hex
-  elseif g:preview_style == 'bg'
+  elseif g:swatch_preview_style == 'bg'
     exe 'hi Visual guibg=' . hex
-  elseif g:preview_style == 'both'
+  elseif g:swatch_preview_style == 'both'
     exe 'hi Visual guifg=' . hex
     exe 'hi Visual guibg=' . hex
   endif
@@ -504,11 +525,12 @@ endfunction
 " }}} Has ❮
 " {{{ On ❯
 function! On(feature)
-  let cword = expand('<cWORD>')
+  let cWORD = expand('<cWORD>')
+  let cword = expand('<cword>')
   if a:feature == 'hidef'
-    if cword =~ '\vgui(fg|bg)?\=' | return v:true | else | return v:false | endif
+    if cWORD =~ '\vgui(fg|bg)?\=' | return v:true | else | return v:false | endif
   elseif a:feature == 'hex'
-    if cword =~ '\v#[a-fA-F0-9]{6}' ||
+    if cWORD =~ '\v#[a-fA-F0-9]{6}' ||
           \ nvim_get_color_by_name(cword) != -1
       return v:true
     else
@@ -653,10 +675,11 @@ let s:in_visual = v:false
 let s:OG_visual_hidef = ['none', '000000', 'ffffff']
 " }}} Variables ❮
 " }}} Backend ❮
+
 " {{{ Setup ❯
-call Set_Shortcuts([['w','s'],['e','d'],['r','f']])
-nnoremap <leader>ss :call New_adjustment()<cr>
-nnoremap <leader>pt :call Preview_this()<cr>
+call Swatch_set_shortcuts([['w','s'],['e','d'],['r','f']])
+nnoremap <leader>ss :call Swatch_new_adjustment()<cr>
+nnoremap <leader>pt :call Swatch_preview_this()<cr>
 " }}} Setup ❮
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:
