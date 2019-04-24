@@ -55,9 +55,9 @@ You can change the step that each channel increases/decreases by with the `g:swa
 ### For altering/making colorschemes
 calling the new adjustment function opens a file containing adjustments to the currently active colorscheme, in the directory specified by `g:swatch_dir`. By default this path is: `~/.config/nvim/plugins/swatch/`.
 
-You can change the location of the swatch directory by putting `let g:swatch_dir = 'path/to/your/desired/location/` (trailing forward slash obligatory)
+You can change the location of the swatch directory by putting `:let g:swatch_dir = 'path/to/your/desired/location/` (trailing forward slash obligatory)
 
-to load alterations to a colorscheme on startup add the line `call Swatch_load('$name_of_colorscheme')` either instead of, or after calling `colo $name_of_colorscheme`.
+to load alterations to a colorscheme on startup add the line `:call Swatch_load('$name_of_colorscheme')` either instead of, or after calling `:colo $name_of_colorscheme`.
 
 ### For working with hexadecimal color codes more generally
 
