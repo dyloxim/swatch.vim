@@ -7,7 +7,7 @@ Swatch is a plugin to make working with hexadecimal color codes and colorschemes
 ## Requirements:
 
 * nvim instance capable of displaying true color.
-* an nvim interface that correctly interprets meta key chords (ie. allows mappings like `nnoremap <m-a> :echo 'hi'`)
+* an nvim interface that correctly interprets meta key chords (ie. allows mappings like `:nnoremap <M-A> :echo 'hi'<CR>`)
 
 ## Default mappings
 
@@ -43,8 +43,8 @@ call Swatch_set_shortcuts([
         \['t','g']
         \])
 ```
-the first pair map `<m-e>` to _increase channel 1_ (red), and `<m-d>` to _decrease channel 1_.
-The secound pair maps `<m-r>` to _increase channel 2_ (green), and ... etc.
+the first pair map `<M-E>` to _increase channel 1_ (red), and `<M-D>` to _decrease channel 1_.
+The secound pair maps `<M-R>` to _increase channel 2_ (green), and ... etc.
 So the result in this case looks mostly the same as the diagram above but the keys have all moved right by one column.
 
 ## Variables
@@ -69,7 +69,3 @@ previewing and interactively changing color should work straight away.
 * add interface for creating folders of swatches and the ability to link to those swatches, and between other groups
 * fix previewing of named colors with upper case letters in the middle of the word
 * write help file
-
-
-
-
