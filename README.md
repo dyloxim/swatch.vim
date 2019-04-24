@@ -35,6 +35,22 @@ So **meta-w** increases red, **meta-f** decreases blue.
 
 I find it fairly intuitive to use.
 
+If you want, you can remap these keys like so:
+```
+call Swatch_set_shortcuts([
+        \['e','d'],
+        \['r','f'],
+        \['t','g']
+        \])
+```
+the first pair map `<m-e>` to _increase channel 1_ (red), and `<m-d>` to _decrease channel 1_.
+The secound pair maps `<m-r>` to _increase channel 2_ (green), and ... etc.
+So the result in this case looks mostly the same as the diagram above but the keys have all moved right by one column.
+
+## Variables
+
+You can change the step that each channel increases/decreases by with the `g:swatch_step` variable, the preview region with `g:swatch_preview_region` (accepted values are: `word`, `WORD`, `para`, `screen`), and the preview attributes with `g:swatch_preview_style` (either `fg`, `bg`, or `both`).
+
 ## Usage
 ### For altering/making colorschemes
 calling the new adjustment function opens a file containing adjustments to the currently active colorscheme, in the directory specified by `g:swatch_dir`. By default this path is: `~/.config/nvim/plugins/swatch/`.
