@@ -2,44 +2,32 @@
 
 " {{{ API ❯
 " {{{ Swatch_new_adjustment ❯
-function! Swatch_new_adjustment(...)
-  if len(a:) < 5 | let group = s:Get_group('cursor') | else | let group = get(a:, 1) | endif
-  if group != ''
-    let attributes = s:Get_attributes_string(group)
-    let file_path = s:Get_alterations_file()
-    if s:Swatch_Buffer_Open()
-      exe bufwinnr(file_path) . 'wincmd w'
-    else
-      wincmd v | wincmd L | exe '50 wincmd |'
-      if !filereadable(file_path)
-        call s:Init_alterations_file(file_path)
-      endif
-      exe 'edit ' . file_path
+function! Swatch_make_alteration()
+  let group = s:Get_group('cursor') | if group != ''
+    call s:Goto_alterations_buffer()
+    normal ggzR
+    if search(group, 'n') == 0
+      call s:Insert_group(group)
     endif
-    silent if !search(l:group, 'n')
-      call s:Insert_group(group, attributes)
-    endif
-    normal! zMgg
     call search(group)
-    normal! zv3j
+    normal zMzv3j
   endif
 endfunction
 " }}} Swatch_new_adjustment ❮
 " {{{ Swatch_adjust_levels ❯
 function! Swatch_adjust_levels(channel, delta, ...)
-  let a:audit = get(a:, 1, v:true)
-  let s:in_visual = get(a:, 2, v:false)
-
-  if a:audit == v:true | call s:Audit(a:channel, a:delta)
-  else " audit already performed
-    if s:context == 'hidef'
+  let s:in_visual = get(a:, 1, v:false)
+  let context = s:Get_context()
+  if context != 'none'
+    if s:in_visual && s:Position_valid()
+      normal 
+      call cursor(s:last_trigger_pos)
+      undojoin | call s:Adjust_levels_{context}(a:channel, a:delta)
+      undojoin | call Swatch_preview_this()
+    else
       call s:Set_last('trigger_pos')
-      call s:Adjust_levels_HIDEF(a:channel, a:delta)
-    elseif s:context == 'hex'
-      call s:Set_last('trigger_pos')
-      call s:Adjust_levels_HEX(a:channel, a:delta)
-    elseif s:context == 'in_visual'
-      call s:Adjust_levels_IN_VISUAL(a:channel, a:delta)
+      call s:Adjust_levels_{context}(a:channel, a:delta)
+      call Swatch_preview_this()
     endif
   endif
 endfunction
@@ -51,8 +39,8 @@ function! Swatch_preview_this()
   elseif s:Has(getline('.'), 'hex')
     call s:Position_cursor_HAS_HIDEF()
   endif
-  let hex = s:Get_hex('here')
-  call s:Preview_hex(hex, 'word')
+  let value = s:Get_value('here')
+  call s:Preview_value(value, 'word')
 endfunction
 " }}} Swatch_preview_this ❮
 " {{{ Swatch_set_shortcuts ❯
@@ -64,13 +52,35 @@ function! Swatch_set_shortcuts(channels)
           \. ':call Swatch_adjust_levels(' . l:i . ',-1)<cr>'
     exe 'vnoremap <m-' . a:channels[l:i][0] . '> '
           \. ":<c-u>'>call Swatch_adjust_levels(" . l:i . ',1,'
-          \. 'v:true, v:true)<cr>' 
+          \. 'v:true)<cr>' 
     exe 'vnoremap <m-' . a:channels[l:i][1] . '> '
           \. ":<c-u>'>call Swatch_adjust_levels(" . l:i . ',-1,'
-          \. 'v:true, v:true)<cr>'
+          \. 'v:true)<cr>'
   endfor
 endfunction
 " }}} Swatch_set_shortcuts ❮
+" {{{ Swatch_load ❯
+function! Swatch_load(...)
+  let colorscheme = get(a:, 1, s:Colors_name()) | let group = get(a:, 2, 'none')
+
+  if group == 'none'
+    exe 'colo ' . colorscheme
+    if filereadable(s:Get_alterations_file())
+      exe 'source ' . g:swatch_dir . 'alterations/' . colorscheme . '.vim'
+    endif
+  else | let group = get(a:, 2)
+    let index = index(map(s:Get_alterations(), {k,v -> v[0]}), group)
+    if index == -1
+      let hidef = ['Visual'] + s:OG_visual_hidef
+    else
+      let hidef = s:Get_alterations()[index]
+    endif
+    call s:Apply_style(hidef[0], 'gui', hidef[1])
+    call s:Apply_style(hidef[0], 'guifg', hidef[2])
+    call s:Apply_style(hidef[0], 'guibg', hidef[3])
+  endif
+endfunction
+" }}} Swatch_load ❮
 " {{{ Variables ❯
 let g:swatch_step = 5
 let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/user_data/'
@@ -80,52 +90,23 @@ let g:swatch_preview_style = 'bg'
 " }}} API ❮
 " {{{ Backend ❯
 " {{{ Audits ❯
-" {{{ Audit ❯
-function! s:Audit(channel, delta)
-  if s:in_visual == v:true
-    let s:context = 'in_visual' | call s:Audit_IN_VISUAL(a:channel, a:delta)
-  elseif s:On('hidef')
-    call s:Position_cursor_ON_HIDEF()
-    let s:context = 'hidef' | call s:Audit_HIDEF(a:channel, a:delta)
-  elseif s:On('hex')
-    call s:Position_cursor_ON_HEX()
-    let s:context = 'hex' | call s:Audit_HEX(a:channel, a:delta)
-  elseif s:Has(getline('.'), 'hidef')
-    call s:Position_cursor_HAS_HIDEF()
-    let s:context = 'hidef' | call s:Audit_HIDEF(a:channel, a:delta)
-  elseif s:Has(getline('.'), 'hex')
-    call s:Position_cursor_HAS_HEX()
-    let s:context = 'hex' | call s:Audit_HEX(a:channel, a:delta)
+" {{{ Position_valid ❯
+function! s:Position_valid()
+  if s:in_visual
+    if s:Get_last('cursor_pos')[0] == s:Get_current('line')
+      return v:true
+    else
+      return v:false
+    endif
   else
-    echo 'on nothing'
+    if s:Get_last('trigger_pos')[0] == s:Get_current('line')
+      return v:true
+    else
+      return v:false
+    endif
   endif
 endfunction
-" }}} Audit ❮
-" {{{ Audit_HIDEF ❯
-function! s:Audit_HIDEF(channel, delta)
-  if s:Get_last('trigger_pos')[0] == s:Get_current('line')
-    undojoin | call s:Adjust_levels_HIDEF(a:channel, a:delta)
-  else
-    call s:Set_last('trigger_pos')
-    call s:Adjust_levels_HIDEF(a:channel, a:delta)
-  endif
-endfunction
-" }}} Audit_HIDEF ❮
-" {{{ Audit_HEX ❯
-function! s:Audit_HEX(channel, delta)
-  call s:Set_last('trigger_pos')
-  call s:Adjust_levels_HEX(a:channel, a:delta)
-endfunction
-" }}} Audit_HEX ❮
-" {{{ Audit_IN_VISUAL ❯
-function! s:Audit_IN_VISUAL(channel, delta)
-  if s:Get_last('cursor_pos')[0] == s:Get_current('pos')[0]
-    undojoin | call s:Adjust_levels_IN_VISUAL(a:channel, a:delta)
-  else
-    echo 'No color selected'
-  endif
-endfunction
-" }}} Audit_IN_VISUAL ❮
+" }}} Position_valid ❮
 " {{{ Is_color ❯
 function! s:Is_color(name)
   if nvim_get_color_by_name(a:name) != -1
@@ -149,45 +130,57 @@ endfunction
 " {{{ Adjust_levels_HIDEF ❯
 function! s:Adjust_levels_HIDEF(channel, delta)
   let group = s:Get_group('hidef')
-  let key = s:Get_hidef('key') | let value = s:Get_hidef('value')
+  let key = s:Get_key() | let value = s:Get_value('here')
   if key == 'gui'
-    let new_style_string = s:Transform_style(value, a:channel, a:delta)
-    call s:Apply_style(group, key, new_style_string)
-    call s:Replace_hidef(key, new_style_string)
+    let new_value = s:Transform_style(value, a:channel, a:delta)
   else " key is fg or bg
-    if value[0] =~ '\u' 
-      let value = s:Get_hex_from_name(value)
-    endif
-    let new_hex = s:Transform_hex(value, a:channel, a:delta)
-    call s:Apply_style(group, key, new_hex)
-    call s:Replace_hidef(key, new_hex)
+    let new_value = s:Transform_value(value, a:channel, a:delta)
   endif
+  call s:Apply_style(group, key, new_value)
+  call s:Replace_hidef(key, new_value)
 endfunction
 " }}} Adjust_levels_HIDEF ❮
 " {{{ Adjust_levels_HEX ❯
 function! s:Adjust_levels_HEX(channel, delta)
-  let old = s:Get_hex('here') | let new = s:Transform_hex(old, a:channel, a:delta)
-  let name_color = nvim_get_color_by_name(old)
-  if name_color != -1
-    let new = s:Get_hex_from_name(old)
-    call s:Replace_hex(old, '#' . new)
-  else
-    call s:Replace_hex(old, new)
-  endif
-  call s:Preview_hex(new)
+  let value = s:Get_value('here')
+  let new_value = s:Transform_value(value, a:channel, a:delta)
+  call s:Replace_hex(new_value)
 endfunction
 " }}} Adjust_levels_HEX ❮
-" {{{ Adjust_levels_IN_VISUAL ❯
-function! s:Adjust_levels_IN_VISUAL(channel, delta)
-  let hex = s:Get_hex('elsewhere') | let new_hex = s:Transform_hex(hex, a:channel, a:delta)
-  call s:Replace_hex(hex, new_hex)
-  call s:Preview_hex(new_hex)
-endfunction
-" }}} Adjust_levels_IN_VISUAL ❮
 " }}} Adjust_levels ❮
 " {{{ Get & Set ❯
-" {{{ Get_hex_from_name ❯
-function! s:Get_hex_from_name(name)
+" {{{ Get_context ❯
+function! s:Get_context()
+  if s:On('HIDEF')
+    call s:Position_cursor_ON_HIDEF() | return 'HIDEF'
+  elseif s:On('HEX')
+    call s:Position_cursor_ON_HEX() | return 'HEX'
+  elseif s:Has(getline('.'), 'HIDEF')
+    call s:Position_cursor_HAS_HIDEF() | return 'HIDEF'
+  elseif s:Has(getline('.'), 'HEX')
+    call s:Position_cursor_HAS_HEX() | return 'HEX'
+  else
+    echo 'on nothing'
+    return 'none' 
+  endif
+endfunction
+" }}} Get_context ❮
+" {{{ Goto_alterations_buffer ❯
+function! s:Goto_alterations_buffer()
+  let file_path = s:Get_alterations_file()
+  if s:Swatch_Buffer_Open()
+    exe bufwinnr(file_path) . 'wincmd w'
+  else
+    wincmd v | wincmd L | exe '50 wincmd |'
+    if !filereadable(file_path)
+      call s:Init_alterations_file(file_path)
+    endif
+    exe 'edit ' . file_path
+  endif
+endfunction
+" }}} Goto_alterations_buffer ❮
+" {{{ Get_value_from_name ❯
+function! s:Get_value_from_name(name)
   let binary_color = printf('%024b', nvim_get_color_by_name(a:name))
   let hex = join(map([
         \binary_color[0:7],
@@ -197,7 +190,7 @@ function! s:Get_hex_from_name(name)
         \{k,v -> printf('%02x', '0b' . v)}), '')
   return hex
 endfunction
-" }}} Get_hex_from_name ❮
+" }}} Get_value_from_name ❮
 " {{{ Get_attributes_string ❯
 function! s:Get_attributes_string(group)
   redir => group_information | silent exe "hi" a:group | redir END
@@ -286,18 +279,18 @@ function! s:Get_template()
   return template
 endfunction
 " }}} Get_template ❮
-" {{{ Get_hex ❯
-function! s:Get_hex(context)
+" {{{ Get_value ❯
+function! s:Get_value(context)
   if a:context == 'here'
-    let hex = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
+    let value = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
   elseif a:context == 'elsewhere'
     call cursor(s:last_trigger_pos)
-    let hex = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
+    let value = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
     call cursor(s:last_cursor_pos)
   endif
-  return hex
+  return value
 endfunction
-" }}} Get_hex ❮
+" }}} Get_value ❮
 " {{{ Get_group ❯
 function! s:Get_group(context)
   if a:context == 'cursor'
@@ -315,8 +308,9 @@ function! s:Get_group(context)
       let l:syntaxes = [[0,"normal","normal"]]
     endif
     let synlist = map(deepcopy(l:syntaxes), {
-          \k,v -> printf("%s. %s -> %s -> %s", k+1, v[0], v[1], 
-          \v[1] == v[2] ? "-" : v[2])
+          \k,v -> printf("%s. %s -> %s -> %s",
+          \k+1, v[0], v[1], 
+          \(v[1] == v[2] ? "-" : v[2]))
           \})
     let choice = inputlist(
           \["Choose highlight group you wish to alter"]
@@ -333,20 +327,11 @@ function! s:Get_group(context)
   endif
 endfunction
 " }}} Get_group ❮
-" {{{ Get_hidef ❯
-function! s:Get_hidef(attr)
-  let cWORD = expand('<cWORD>')
-  if a:attr == 'key'
-    return split(cWORD, '=')[0]
-  elseif a:attr == 'value'
-    if cWORD =~ '#'
-      return split(cWORD, '=')[1][1:]
-    else
-      return split(cWORD, '=')[1]
-    endif
-  endif
+" {{{ Get_key ❯
+function! s:Get_key()
+  return split(expand('<cWORD>'), '=')[0]
 endfunction
-" }}} Get_hidef ❮
+" }}} Get_key ❮
 " {{{ Colors_name ❯
 function! s:Colors_name(...)
   return (exists('g:colors_name') ? g:colors_name : 'default')
@@ -387,8 +372,8 @@ endfunction
 " }}} Get & Set ❮
 " {{{ Windows & Files ❯
 " {{{ Insert_group ❯
-function! s:Insert_group(group, attributes)
-  let [style, fg, bg] = a:attributes
+function! s:Insert_group(group)
+  let [style, fg, bg] = s:Get_attributes_string(a:group)
   let [fg, bg] = map([fg, bg],
         \{k,v -> v[0] =~ '\u' ||  v =~ '\v(none|fg|bg)' ? v : '#' . v})
   call append(0, 
@@ -424,8 +409,10 @@ endfunction
 " }}} Windows & Files ❮
 " {{{ Replace / Load / styles ❯
 " {{{ Replace_hex ❯
-function! s:Replace_hex(old, new)
-  exe s:last_trigger_pos[0] . 's/' . a:old . '/' . a:new
+function! s:Replace_hex(value)
+  let cword = expand('<cword>')
+  call cursor(s:last_trigger_pos)
+  exe s:last_trigger_pos[0] . 's/' . cword . '/' . '#' . a:value
   call cursor(s:last_trigger_pos)
 endfunction
 " }}} Replace_hex ❮
@@ -442,12 +429,12 @@ function! s:Apply_style(group, key, value)
         \s:Is_style(a:value) ?
         \ a:value :
         \ '#' . a:value
-  let value = substitute(value, '\v^(.*)$', '\u\1', '')
+  let value = substitute(value, '\v^.*$', '\u\0', '')
   exe 'hi ' . a:group . ' ' . a:key . '=' . value
 endfunction
 " }}} Apply_style ❮
-" {{{ Preview_hex ❯
-function! s:Preview_hex(hex, ...)
+" {{{ Preview_value ❯
+function! s:Preview_value(hex, ...)
   let s:OG_visual_hidef = s:Get_attributes_string('Visual')
   let a:preview_region = get(a:, 1, g:swatch_preview_region)
   let hex = s:Is_color(a:hex) || s:Is_style(a:hex) ? a:hex : '#' . a:hex
@@ -479,39 +466,17 @@ function! s:Preview_hex(hex, ...)
 
   call s:Set_last('cursor_pos')
 endfunction
-" }}} Preview_hex ❮
+" }}} Preview_value ❮
 " {{{ Reset_visual ❯
 function! s:Reset_visual()
   if s:Get_last('cursor_pos') != s:Get_current('pos')
-    call s:Swatch_load(s:Colors_name(), 'Visual')
+    call Swatch_load(s:Colors_name(), 'Visual')
     augroup Swatch
       au!
     augroup END
   endif
 endfunction
 " }}} Reset_visual ❮
-" {{{ Swatch_load ❯
-function! s:Swatch_load(...)
-  let colorscheme = get(a:, 1, s:Colors_name()) | let group = get(a:, 2, 'none')
-
-  if group == 'none'
-    exe 'colo ' . colorscheme
-    if filereadable(s:Get_alterations_file())
-      exe 'source ' . g:swatch_dir . 'alterations/' . colorscheme . '.vim'
-    endif
-  else | let group = get(a:, 2)
-    let index = index(map(s:Get_alterations(), {k,v -> v[0]}), group)
-    if index == -1
-      let hidef = ['Visual'] + s:OG_visual_hidef
-    else
-      let hidef = s:Get_alterations()[index]
-    endif
-    call s:Apply_style(hidef[0], 'gui', hidef[1])
-    call s:Apply_style(hidef[0], 'guifg', hidef[2])
-    call s:Apply_style(hidef[0], 'guibg', hidef[3])
-  endif
-endfunction
-" }}} Swatch_load ❮
 " }}} Replace / Load styles ❮
 " {{{ Cursor ❯
 " {{{ Has ❯
@@ -541,31 +506,12 @@ endfunction
 " }}} On ❮
 " {{{ Position_cursor_ON_HIDEF ❯
 function! s:Position_cursor_ON_HIDEF()
-  let cword = expand('<cword>')
-  if cword =~ 'gui'
-    normal! Ebl
-  else
-    if s:Cursor_char() != cword[-1] && col('.') != col('$') - 1
-      call search('\v(>)\@=', '')
-    endif
-    normal! bl
-  endif
+  normal lBEbl
 endfunction
 " }}} Position_cursor_ON_HIDEF ❮
 " {{{ Position_cursor_ON_HEX ❯
 function! s:Position_cursor_ON_HEX()
-  let cword = expand('<cword>')
-  if cword =~ '#' 
-    if s:Cursor_char() != '#'
-    else
-      normal! l
-    endif
-  else
-    if s:Cursor_char() != cword[-1] && col('.') != col('$') - 1
-      call search('\v(>)\@=', '')
-    endif
-    normal! bl
-  endif
+  normal lb
 endfunction
 " }}} Position_cursor_ON_HEX ❮
 " {{{ Position_cursor_HAS_HIDEF ❯
@@ -649,14 +595,18 @@ function! s:Transform_style(style_string, channel, delta)
   return s:Style_decode(tally)
 endfunction
 " }}} Transform_style ❮
-" {{{ Transform_hex ❯
-function! s:Transform_hex(hex, channel, delta)
-  let rgb = s:Hex_to_RGB(a:hex)
-  let new_rgb = s:Transform_rgb(rgb, a:channel, a:delta)
-  let new_hex = s:RGB_to_hex(new_rgb)
-  return new_hex
+" {{{ Transform_value ❯
+function! s:Transform_value(value, channel, delta)
+  if nvim_get_color_by_name(a:value) == -1
+    let rgb = s:Hex_to_RGB(a:value)
+    let new_rgb = s:Transform_rgb(rgb, a:channel, a:delta)
+    let new_value = s:RGB_to_hex(new_rgb)
+  else
+    let new_value = s:Get_value_from_name(a:value)
+  endif
+  return new_value
 endfunction
-" }}} Transform_hex ❮
+" }}} Transform_value ❮
 " {{{ Transform_rgb ❯
 function! s:Transform_rgb(rgb, channel, delta)
   let change = map([0,1,2], {k, v -> v == a:channel ? 1 : 0})
@@ -695,7 +645,7 @@ let s:OG_visual_hidef = ['none', '000000', 'ffffff']
 " }}} Backend ❮
 " {{{ Setup ❯
 call Swatch_set_shortcuts([['w','s'],['e','d'],['r','f']])
-nnoremap <leader>ss :call Swatch_new_adjustment()<cr>
+nnoremap <leader>ss :call Swatch_make_alteration()<cr>
 nnoremap <leader>pt :call Swatch_preview_this()<cr>
 " }}} Setup ❮
 
