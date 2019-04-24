@@ -84,7 +84,7 @@ endfunction
 " }}} Swatch_load ❮
 " {{{ Variables ❯
 let g:swatch_step = 5
-let g:swatch_dir = '/Users/Joel/.config/nvim/rc/swatch/user_data/'
+let g:swatch_dir = '/Users/Joel/.config/nvim/swatch/'
 let g:swatch_preview_region = 'word'
 let g:swatch_preview_style = 'bg'
 " }}} Variables ❮
