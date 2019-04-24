@@ -25,13 +25,13 @@ how to interact with color under the cursor:
 
 ![meta chord](https://i.imgur.com/WlGkGne.jpg)
 
-This image shows the key chord that you would press to _increase_ the _first_ channel.
+This image shows the key chord that you would press to **increase** the **first** channel.
 
 The top row of keys corresponds to an increase in a channel, the bottom row corresponds to a decrease.
 
 The columns correspond to the three channels, first red, then green then blue.
 
-So meta-w increases red, meta-f decreases blue.
+So **meta-w** increases red, **meta-f** decreases blue.
 
 I find it fairly intuitive to use.
 
