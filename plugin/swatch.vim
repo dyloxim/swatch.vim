@@ -1,5 +1,7 @@
 " Swatch: a great plugin by Joel Strouts
 
+
+
 " {{{ API ❯
 " {{{ Swatch_new_adjustment ❯
 function! Swatch_make_alteration()
@@ -23,11 +25,10 @@ function! Swatch_adjust_levels(channel, delta, ...)
       normal 
       call cursor(s:last_trigger_pos)
       undojoin | call s:Adjust_levels_{context}(a:channel, a:delta)
-      undojoin | call Swatch_preview_this()
+      undojoin | 
     else
       call s:Set_last('trigger_pos')
       call s:Adjust_levels_{context}(a:channel, a:delta)
-      call Swatch_preview_this()
     endif
   endif
 endfunction
@@ -131,13 +132,11 @@ endfunction
 function! s:Adjust_levels_HIDEF(channel, delta)
   let group = s:Get_group('hidef')
   let key = s:Get_key() | let value = s:Get_value('here')
-  if key == 'gui'
-    let new_value = s:Transform_style(value, a:channel, a:delta)
-  else " key is fg or bg
-    let new_value = s:Transform_value(value, a:channel, a:delta)
-  endif
+  let new_value = s:Transform_{key == 'gui' ? 'style' : 'value'}
+        \(value, a:channel, a:delta)
   call s:Apply_style(group, key, new_value)
   call s:Replace_hidef(key, new_value)
+  if key != 'gui' | call Swatch_preview_this() | endif
 endfunction
 " }}} Adjust_levels_HIDEF ❮
 " {{{ Adjust_levels_HEX ❯
@@ -145,6 +144,7 @@ function! s:Adjust_levels_HEX(channel, delta)
   let value = s:Get_value('here')
   let new_value = s:Transform_value(value, a:channel, a:delta)
   call s:Replace_hex(new_value)
+  call Swatch_preview_this()
 endfunction
 " }}} Adjust_levels_HEX ❮
 " }}} Adjust_levels ❮
@@ -171,7 +171,7 @@ function! s:Goto_alterations_buffer()
   if s:Swatch_Buffer_Open()
     exe bufwinnr(file_path) . 'wincmd w'
   else
-    wincmd v | wincmd L | exe '50 wincmd |'
+    wincmd v | wincmd L " | exe '40 wincmd |'
     if !filereadable(file_path)
       call s:Init_alterations_file(file_path)
     endif
@@ -282,13 +282,14 @@ endfunction
 " {{{ Get_value ❯
 function! s:Get_value(context)
   if a:context == 'here'
-    let value = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
+    let value = substitute(split(expand('<cWORD>'), '=')[-1], '#', '', 'g')
   elseif a:context == 'elsewhere'
     call cursor(s:last_trigger_pos)
-    let value = substitute(split(expand('<cword>'), '=')[-1], '#', '', 'g')
+    let value = substitute(split(expand('<cWORD>'), '=')[-1], '#', '', 'g')
     call cursor(s:last_cursor_pos)
   endif
-  return value
+  let value = substitute(value, '[^a-zA-Z0-9,]', '', 'g')
+  return substitute(value, ',$', '', '')
 endfunction
 " }}} Get_value ❮
 " {{{ Get_group ❯
@@ -410,7 +411,7 @@ endfunction
 " {{{ Replace / Load / styles ❯
 " {{{ Replace_hex ❯
 function! s:Replace_hex(value)
-  let cword = expand('<cword>')
+  let cword = substitute(expand('<cWORD>'), '[^a-zA-Z0-9#]', '', 'g')
   call cursor(s:last_trigger_pos)
   exe s:last_trigger_pos[0] . 's/' . cword . '/' . '#' . a:value
   call cursor(s:last_trigger_pos)
@@ -438,8 +439,6 @@ function! s:Preview_value(hex, ...)
   let s:OG_visual_hidef = s:Get_attributes_string('Visual')
   let a:preview_region = get(a:, 1, g:swatch_preview_region)
   let hex = s:Is_color(a:hex) || s:Is_style(a:hex) ? a:hex : '#' . a:hex
-  echo hex
-
   if g:swatch_preview_style == 'fg'
     exe 'hi Visual guifg=' . hex
   elseif g:swatch_preview_style == 'bg'
@@ -506,12 +505,12 @@ endfunction
 " }}} On ❮
 " {{{ Position_cursor_ON_HIDEF ❯
 function! s:Position_cursor_ON_HIDEF()
-  normal lBEbl
+  normal lBEb2l
 endfunction
 " }}} Position_cursor_ON_HIDEF ❮
 " {{{ Position_cursor_ON_HEX ❯
 function! s:Position_cursor_ON_HEX()
-  normal lb
+  normal lb2l
 endfunction
 " }}} Position_cursor_ON_HEX ❮
 " {{{ Position_cursor_HAS_HIDEF ❯
@@ -590,8 +589,9 @@ function! s:Transform_style(style_string, channel, delta)
         \s:Scale_vector(a:delta/abs(a:delta), l:change)
         \)
   let tally = s:Vector_add(tally, [2,2,3])
-  let tally[0] = tally[0] % 2 | let tally[1] = tally[1] % 2
-  let tally[2] = tally[2] % 3
+  let tally[0] = (tally[0] + 2) % 2 
+  let tally[1] = (tally[1] + 2) % 2
+  let tally[2] = (tally[2] + 3) % 3
   return s:Style_decode(tally)
 endfunction
 " }}} Transform_style ❮
