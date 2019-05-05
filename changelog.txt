@@ -1,0 +1,3 @@
+0.1.1
+- correct hardcoded user directory mistake
+- correct function call that caused user preview-region to be overridden
