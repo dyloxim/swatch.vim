@@ -7,7 +7,7 @@ Swatch is a plugin to make working with hexadecimal color codes and colorschemes
 ## Requirements:
 
 * nvim instance capable of displaying true color.
-* an nvim interface that correctly interprets meta key chords (ie. allows mappings like `nnoremap <m-a> :echo 'hi'`)
+* an nvim interface that correctly interprets meta key chords (ie. allows mappings like `:nnoremap <M-A> :echo 'hi'<CR>`)
 
 ## Default mappings
 
@@ -35,13 +35,29 @@ So **meta-w** increases red, **meta-f** decreases blue.
 
 I find it fairly intuitive to use.
 
+If you want, you can remap these keys like so:
+```
+call Swatch_set_shortcuts([
+        \['e','d'],
+        \['r','f'],
+        \['t','g']
+        \])
+```
+the first pair map `<M-E>` to _increase channel 1_ (red), and `<M-D>` to _decrease channel 1_.
+The secound pair maps `<M-R>` to _increase channel 2_ (green), and ... etc.
+So the result in this case looks mostly the same as the diagram above but the keys have all moved right by one column.
+
+## Variables
+
+You can change the step that each channel increases/decreases by with the `g:swatch_step` variable, the preview region with `g:swatch_preview_region` (accepted values are: `word`, `WORD`, `para`, `screen`), and the preview attributes with `g:swatch_preview_style` (either `fg`, `bg`, or `both`).
+
 ## Usage
 ### For altering/making colorschemes
 calling the new adjustment function opens a file containing adjustments to the currently active colorscheme, in the directory specified by `g:swatch_dir`. By default this path is: `~/.config/nvim/plugins/swatch/`.
 
-You can change the location of the swatch directory by putting `let g:swatch_dir = 'path/to/your/desired/location/` (trailing forward slash obligatory)
+You can change the location of the swatch directory by putting `:let g:swatch_dir = 'path/to/your/desired/location/` (trailing forward slash obligatory)
 
-to load alterations to a colorscheme on startup add the line `call Swatch_load('$name_of_colorscheme')` either instead of, or after calling `colo $name_of_colorscheme`.
+to load alterations to a colorscheme on startup add the line `:call Swatch_load('$name_of_colorscheme')` either instead of, or after calling `:colo $name_of_colorscheme`.
 
 ### For working with hexadecimal color codes more generally
 
@@ -53,7 +69,3 @@ previewing and interactively changing color should work straight away.
 * add interface for creating folders of swatches and the ability to link to those swatches, and between other groups
 * fix previewing of named colors with upper case letters in the middle of the word
 * write help file
-
-
-
-
