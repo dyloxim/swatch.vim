@@ -1,7 +1,5 @@
 " Swatch: a great plugin by Joel Strouts
 
-
-
 " {{{ API ❯
 " {{{ Swatch_new_adjustment ❯
 function! Swatch_make_alteration()
@@ -21,11 +19,13 @@ function! Swatch_adjust_levels(channel, delta, ...)
   let s:in_visual = get(a:, 1, v:false)
   let context = s:Get_context()
   if context != 'none'
-    if s:in_visual && s:Position_valid()
-      normal 
-      call cursor(s:last_trigger_pos)
-      undojoin | call s:Adjust_levels_{context}(a:channel, a:delta)
-      undojoin | 
+    if s:in_visual
+      if s:Position_valid()
+        normal 
+        call cursor(s:last_trigger_pos)
+        undojoin | call s:Adjust_levels_{context}(a:channel, a:delta)
+        undojoin | 
+      endif
     else
       call s:Set_last('trigger_pos')
       call s:Adjust_levels_{context}(a:channel, a:delta)
@@ -41,7 +41,7 @@ function! Swatch_preview_this()
     call s:Position_cursor_HAS_HIDEF()
   endif
   let value = s:Get_value('here')
-  call s:Preview_value(value, 'word')
+  call s:Preview_value(value)
 endfunction
 " }}} Swatch_preview_this ❮
 " {{{ Swatch_set_shortcuts ❯
@@ -458,17 +458,19 @@ function! s:Preview_value(hex, ...)
     normal! viw
   endif
 
+  call s:Set_last('cursor_pos')
+
   augroup Swatch
     au!
     au CursorMoved * call s:Reset_visual()
   augroup END
-
-  call s:Set_last('cursor_pos')
 endfunction
 " }}} Preview_value ❮
 " {{{ Reset_visual ❯
 function! s:Reset_visual()
   if s:Get_last('cursor_pos') != s:Get_current('pos')
+    normal 
+    call cursor(s:last_trigger_pos)
     call Swatch_load(s:Colors_name(), 'Visual')
     augroup Swatch
       au!
