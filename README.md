@@ -78,7 +78,7 @@ else
 endif
 ```
 
-Note: users of the lightline plugin may find that this code interferes with the initializing of its intialization process. If you experience this difficulty, add the line: `call lightline#enable()` before the line `augroup END`
+Note: users of the lightline plugin may find that this code interferes its intialization process. If you experience difficulties, add the line: `call lightline#enable()` before the line `augroup END`
 
 ## Todos
 
