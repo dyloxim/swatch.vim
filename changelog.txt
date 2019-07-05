@@ -1,3 +1,6 @@
+0.2
+- Add functionality to deal with creating/deleting/modifying links between
+highlight groups
 0.1.1
 - correct hardcoded user directory mistake
 - correct function call that caused user preview-region to be overridden
