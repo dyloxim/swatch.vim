@@ -1,6 +1,9 @@
 # Swatch.vim
 
-Swatch is a plugin to make working with hexadecimal color codes and colorschemes easier.
+The easiest way to make your own custom colorschemes. There are other color pickers available for nvim/vim, swatch.vim is different because:
+- specifically designed to make the development of personal colorschemes as easy and intuitive as possible
+- works in an un-fancy, low-tech, idiomatic-vim way (easy to understand and use, no dependencies, just a good interface for manipulating vim's own highlighting groups)
+- limited scope allows the plugin to be small
 
 ![adjust color schemes](https://media.giphy.com/media/SSc9tHaMEPPw7XYuTF/giphy.gif)
 
@@ -21,7 +24,7 @@ nnoremap <leader>ss :call Swatch_new_adjustment()
 nnoremap <leader>pt :call Swatch_preview_this()
 ```
 
-how to interact with color under the cursor:
+How to interact with color under the cursor:
 
 ![meta chord](https://i.imgur.com/WlGkGne.jpg)
 
