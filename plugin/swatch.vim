@@ -3,7 +3,8 @@
 " {{{ API ❯
 " {{{ Swatch_new_adjustment ❯
 function! Swatch_make_alteration()
-  let group = s:Get_group('cursor') | if group != ''
+  let group = s:Get_group('cursor')
+  if l:group != ''
     call s:Goto_alterations_buffer()
     normal ggzR
     if search(group, 'n') == 0
@@ -62,12 +63,16 @@ endfunction
 " }}} Swatch_set_shortcuts ❮
 " {{{ Swatch_load ❯
 function! Swatch_load(...)
-  let colorscheme = get(a:, 1, s:Colors_name()) | let group = get(a:, 2, 'none')
+  let colorscheme = get(a:, 1, s:Colors_name())
+  let group = get(a:, 2, 'none')
 
   if group == 'none'
     exe 'colo ' . colorscheme
     if filereadable(s:Get_alterations_file())
       exe 'source ' . g:swatch_dir . 'alterations/' . colorscheme . '.vim'
+    endif
+    if filereadable(s:Get_links_file())
+      exe 'source ' . g:swatch_dir . 'alterations/' . colorscheme . '-links.vim'
     endif
   else | let group = get(a:, 2)
     let index = index(map(s:Get_alterations(), {k,v -> v[0]}), group)
@@ -165,17 +170,36 @@ function! s:Get_context()
   endif
 endfunction
 " }}} Get_context ❮
-" {{{ Goto_alterations_buffer ❯
-function! s:Goto_alterations_buffer()
-  let file_path = s:Get_alterations_file()
-  if s:Swatch_Buffer_Open()
-    exe bufwinnr(file_path) . 'wincmd w'
+" {{{ Goto_links_buffer ❯
+function! s:Goto_links_buffer()
+  let links_file_path = s:Get_links_file()
+  if s:Swatch_buffer_open()[0]
+    let buffer = s:Get_{s:Swatch_buffer_open()[1]}_file()
+    exe bufwinnr(l:buffer) . 'wincmd w'
+    exe 'edit! ' . l:links_file_path
   else
     wincmd v | wincmd L " | exe '40 wincmd |'
-    if !filereadable(file_path)
-      call s:Init_alterations_file(file_path)
+    if !filereadable(links_file_path)
+      call s:Init_links_file(links_file_path)
     endif
-    exe 'edit ' . file_path
+    exe 'edit ' . links_file_path
+  endif
+endfunction
+" }}} Goto_links_buffer ❮
+" {{{ Goto_alterations_buffer ❯
+function! s:Goto_alterations_buffer()
+  let alterations_file_path = s:Get_alterations_file()
+  if s:Swatch_buffer_open()[0]
+    let buffer = s:Get_{s:Swatch_buffer_open()[1]}_file()
+    exe bufwinnr(l:buffer) . 'wincmd w'
+    write!
+    exe 'edit! ' . l:alterations_file_path
+  else
+    wincmd v | wincmd L " | exe '40 wincmd |'
+    if !filereadable(alterations_file_path)
+      call s:Init_alterations_file(alterations_file_path)
+    endif
+    exe 'edit ' . alterations_file_path
   endif
 endfunction
 " }}} Goto_alterations_buffer ❮
@@ -221,6 +245,13 @@ function! s:Get_style_tally(group)
         \]
 endfunction
 " }}} Get_attributes_tally ❮
+" {{{ Get_links_file ❯
+function! s:Get_links_file()
+  return g:swatch_dir . 'alterations/'
+        \. s:Colors_name()
+        \. '-links.vim'
+endfunction
+" }}} Get_links_file ❮
 " {{{ Get_alterations_file ❯
 function! s:Get_alterations_file()
   return g:swatch_dir . 'alterations/'
@@ -253,8 +284,16 @@ function! s:Get_alterations()
   endif
 endfunction
 " }}} Get_alterations ❮
-" {{{ Get_template ❯
-function! s:Get_template()
+" {{{ Get_links_template ❯
+function! s:Get_links_template()
+  let template = 
+        \ [''] +
+        \ ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
+  return template
+endfunction
+" }}} Get_links_template ❮
+" {{{ Get_alterations_template ❯
+function! s:Get_alterations_template()
   let template = [''] + ['"↓ Difficult to identify groups ↓']
   for group in [
         \'Folded', 'Visual', 'Search',
@@ -274,11 +313,15 @@ function! s:Get_template()
         \['    \ guibg=' . bg   ] +
         \['"}}} '        . group]
   endfor
-  let template = template + [''] + ['" for a complete list of groups see the file :so $VIMRUNTIME/syntax/hitest.vim'] + [''] +
+  let template = 
+        \ template +
+        \ [''] + 
+        \ ['" for a complete list of groups see the file :so $VIMRUNTIME/syntax/hitest.vim'] +
+        \ [''] +
         \ ['" vim:tw=78:ts=2:sw=2:et:fdm=marker:']
   return template
 endfunction
-" }}} Get_template ❮
+" }}} Get_alterations_template ❮
 " {{{ Get_value ❯
 function! s:Get_value(context)
   if a:context == 'here'
@@ -292,9 +335,10 @@ function! s:Get_value(context)
   return substitute(value, ',$', '', '')
 endfunction
 " }}} Get_value ❮
-" {{{ Get_group ❯
-function! s:Get_group(context)
-  if a:context == 'cursor'
+" {{{ Get_group_chain ❯
+function! s:Get_group_chain()
+    " what synatx group under the current cursor position are you interested
+    " in altering?
     let stack = synstack(line("."),col("."))
     let syntaxes = []
     for i in range(0,len(l:stack)-1)
@@ -313,11 +357,76 @@ function! s:Get_group(context)
           \k+1, v[0], v[1], 
           \(v[1] == v[2] ? "-" : v[2]))
           \})
-    let choice = inputlist(
-          \["Choose highlight group you wish to alter"]
-          \+ l:synlist
-          \)
-    return choice == 0 ? '' : l:syntaxes[choice-1][2]
+    echohl Title | echom "Choose highlight group you wish to alter" | echohl None
+    let chain = inputlist(l:synlist)
+    if l:chain == 0 || l:chain > len(l:synlist)
+      return ['', '']
+    else
+      let child = l:syntaxes[chain-1][1] | let parent = l:syntaxes[chain-1][2] 
+      return [l:child, l:parent]
+    endif
+endfunction
+" }}} Get_group_chain ❮
+" {{{ Get_group ❯
+function! s:Get_group(context)
+  if a:context == 'cursor'
+    redraw!
+    let [child, parent] = s:Get_group_chain()
+
+    redraw!
+    if [l:child,l:parent] == ['','']
+      redraw!
+      echohl Error | echom 'Invalid selection' | echohl None
+    elseif l:child == l:parent
+      " (no linking)
+      echohl Title | echom "Would you like to:" | echohl None
+      let group_choice = inputlist([
+            \printf("1. alter %s directly, or:", l:child),
+            \printf("2. link %s to a new group?", l:child),
+            \])
+      if l:group_choice == 1 | return l:parent
+      elseif l:group_choice == 2
+        redraw!
+        let link_destination = input(printf(
+              \'provide the name of the new group you wish to link to, %s -> ',
+              \l:child
+              \))
+        call s:New_link(l:child, l:link_destination)
+        return l:link_destination
+      else
+        redraw!
+        echohl Error | echom 'Invalid selection' | echohl None
+        return 0
+      endif
+      return l:parent
+    else
+      " child != parent (the group is linked to another one)
+      echohl Title
+      echom printf("Which group in the highlight chain [%s -> %s] would you like to edit:",
+            \l:child,
+            \l:parent) 
+      echohl None
+      let group_choice = inputlist([
+            \printf("1. %s : (maintain link)", l:parent),
+            \printf("2. %s : (break link)", l:child),
+            \printf("3. New Link (break link)")
+            \])
+      if l:group_choice == 1 
+        return l:parent
+      elseif l:group_choice == 2
+        call s:New_link(l:child, 'NONE')
+        return l:child
+      elseif l:group_choice == 3
+        let link_destination = input(printf('provide the name of 
+            \the new group you wish to link to, %s -> ', l:child))
+        call s:New_link(l:child, l:link_destination)
+        return l:link_destination
+      else
+        redraw!
+        echohl Error | echom 'Invalid selection' | echohl None
+        return 0
+      endif
+    endif
   elseif a:context == 'hidef'
     call s:Move_cursor([0,1])
     let line_num = search('\vhi(light)? \w+', 'bn')
@@ -372,41 +481,67 @@ endfunction
 " }}} Get_current ❮
 " }}} Get & Set ❮
 " {{{ Windows & Files ❯
+" {{{ New_link ❯
+function! s:New_link(origin, destination)
+  call s:Goto_links_buffer()
+  if search('hi! link ' . a:origin) != 0
+    exe 'normal D'
+  endif
+  call append(0, 
+        \['hi! link ' . a:origin . ' ' . a:destination]
+        \)
+  write
+  source %
+endfunction
+" }}} New_link ❮
 " {{{ Insert_group ❯
 function! s:Insert_group(group)
   let [style, fg, bg] = s:Get_attributes_string(a:group)
   let [fg, bg] = map([fg, bg],
         \{k,v -> v[0] =~ '\u' ||  v =~ '\v(none|fg|bg)' ? v : '#' . v})
   call append(0, 
-        \['" {{{ '        . a:group] +
+        \['" {{{ '       . a:group ] +
         \['hi '          . a:group ] +
         \['    \ gui='   . l:style ] +
         \['    \ guifg=' . l:fg    ] +
         \['    \ guibg=' . l:bg    ] +
-        \['" }}} '        . a:group]
+        \['" }}} '       . a:group ]
         \)
 endfunction
 " }}} Insert_group ❮
+" {{{ Init_links_file ❯
+function! s:Init_links_file(path)
+  let template = s:Get_links_template()
+  exe '!mkdir -p ' . g:swatch_dir . 'alterations/'
+  exe '!touch ' . a:path
+  silent call writefile(template, a:path)
+endfunction
+" }}} Init_links_file ❮
 " {{{ Init_alterations_file ❯
 function! s:Init_alterations_file(path)
-  let template = s:Get_template()
+  let template = s:Get_alterations_template()
   exe '!mkdir -p ' . g:swatch_dir . 'alterations/'
   exe '!touch ' . a:path
   silent call writefile(template, a:path)
 endfunction
 " }}} Init_alterations_file ❮
-" {{{ Swatch_Buffer_Open ❯
-function! s:Swatch_Buffer_Open()
+" {{{ Swatch_buffer_open ❯
+function! s:Swatch_buffer_open()
   let alteration_file = g:swatch_dir . 'alterations/'
         \. (exists('g:colors_name') ? g:colors_name : 'default')
         \. '.vim'
-  if bufwinnr(alteration_file) == -1
-    return v:false
+  let links_file = g:swatch_dir . 'alterations/'
+        \. (exists('g:colors_name') ? g:colors_name : 'default')
+        \. '-links.vim'
+  if bufwinnr(alteration_file) != -1
+    return [v:true, 'alterations']
+  elseif bufwinnr(links_file) != -1
+    return [v:true, 'links']
   else
-    return v:true
+    return [v:false]
   endif
 endfunction
-" }}} Swatch_Buffer_Open ❮
+" }}} Swatch_buffer_open ❮
 " }}} Windows & Files ❮
 " {{{ Replace / Load / styles ❯
 " {{{ Replace_hex ❯
@@ -448,13 +583,13 @@ function! s:Preview_value(hex, ...)
     exe 'hi Visual guibg=' . hex
   endif
 
-  if a:preview_region == 'screen'
-    normal!! HVL
-  elseif a:preview_region == 'para'
-    normal!! vap
-  elseif a:preview_region ==# 'WORD'
-    normal!! viW
-  elseif a:preview_region == 'word'
+  if a:preview_region =~ 'screen'
+    normal! HVL
+  elseif a:preview_region =~ 'para'
+    normal! vap
+  elseif a:preview_region =~ 'WORD'
+    normal! viW
+  elseif a:preview_region =~ 'word'
     normal! viw
   endif
 
