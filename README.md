@@ -66,6 +66,20 @@ to load alterations to a colorscheme on startup add the line `:call Swatch_load(
 
 previewing and interactively changing color should work straight away.
 
+## How to automatically load your custom colorscheme
+Add this to your .vimrc:
+```
+if exists('*Swatch_load')
+  call Swatch_load()
+else
+  augroup Swatch
+    au! VimEnter * call Swatch_load()
+  augroup END
+endif
+```
+
+Note: users of the lightline plugin may find that this code interferes with the initializing of its intialization process. If you experience this difficulty, add the line: `call lightline#enable()` before the line `augroup END`
+
 ## Todos
 
 * implement second mode where the channels correspond to hue/saturation/value
