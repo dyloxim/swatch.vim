@@ -1,6 +1,8 @@
 " Swatch: a great plugin by Joel Strouts
 
 " {{{ API ❯
+" TODO: add interface for managing alteration files (ie. `call Swatch_reset`
+" to let the user remove adjustment files they wish to dissavow etc.)
 " {{{ Swatch_new_adjustment ❯
 function! Swatch_make_alteration()
   let group = s:Get_group('cursor')
@@ -92,8 +94,7 @@ if !exists('g:swatch_step')              | let g:swatch_step = 5                
 if !exists('g:swatch_dir')               | let g:swatch_dir = expand('~/.config/nvim/swatch/') | endif
 if !exists('g:swatch_preview_region')    | let g:swatch_preview_region = 'word'                | endif
 if !exists('g:swatch_preview_style')     | let g:swatch_preview_style = 'bg'                   | endif
-if !exists('g:swatch_enable_on_startup') | let g:swatch_enable_on_startup = v:false            | endif
-if !exists('g:swatch_default_theme')     | let g:swatch_default_theme = ''                     | endif
+if !exists('g:swatch_enable_on_startup') | let g:swatch_enable_on_startup = v:true             | endif
 " }}} Variables ❮
 " }}} API ❮
 " {{{ Backend ❯
@@ -549,11 +550,7 @@ endfunction
 " {{{ Swatch_init ❯
 function! s:Swatch_init()
   if g:swatch_enable_on_startup == v:true
-    if g:swatch_default_theme != ''
-      call Swatch_load(g:swatch_default_theme)
-    else
-      call Swatch_load()
-    endif
+    call Swatch_load()
   endif
 endfunction
 " }}} Swatch_init ❮
