@@ -1,3 +1,7 @@
+0.2.1
+- make auto-loading of alterations relative to pre-specified colorscheme
+default behaviour
+- provide configuration variable for disabling this behaviour if desired
 0.2
 - Add functionality to deal with creating/deleting/modifying links between
 highlight groups

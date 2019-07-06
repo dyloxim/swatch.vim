@@ -88,10 +88,12 @@ function! Swatch_load(...)
 endfunction
 " }}} Swatch_load ❮
 " {{{ Variables ❯
-let g:swatch_step = 5
-let g:swatch_dir = expand('~/.config/nvim/swatch/')
-let g:swatch_preview_region = 'word'
-let g:swatch_preview_style = 'bg'
+if !exists('g:swatch_step')              | let g:swatch_step = 5                               | endif
+if !exists('g:swatch_dir')               | let g:swatch_dir = expand('~/.config/nvim/swatch/') | endif
+if !exists('g:swatch_preview_region')    | let g:swatch_preview_region = 'word'                | endif
+if !exists('g:swatch_preview_style')     | let g:swatch_preview_style = 'bg'                   | endif
+if !exists('g:swatch_enable_on_startup') | let g:swatch_enable_on_startup = v:false            | endif
+if !exists('g:swatch_default_theme')     | let g:swatch_default_theme = ''                     | endif
 " }}} Variables ❮
 " }}} API ❮
 " {{{ Backend ❯
@@ -544,6 +546,17 @@ endfunction
 " }}} Swatch_buffer_open ❮
 " }}} Windows & Files ❮
 " {{{ Replace / Load / styles ❯
+" {{{ Swatch_init ❯
+function! s:Swatch_init()
+  if g:swatch_enable_on_startup == v:true
+    if g:swatch_default_theme != ''
+      call Swatch_load(g:swatch_default_theme)
+    else
+      call Swatch_load()
+    endif
+  endif
+endfunction
+" }}} Swatch_init ❮
 " {{{ Replace_hex ❯
 function! s:Replace_hex(value)
   let cword = substitute(expand('<cWORD>'), '[^a-zA-Z0-9#]', '', 'g')
@@ -595,7 +608,7 @@ function! s:Preview_value(hex, ...)
 
   call s:Set_last('cursor_pos')
 
-  augroup Swatch
+  augroup Swatch_Cursor
     au!
     au CursorMoved * call s:Reset_visual()
   augroup END
@@ -607,7 +620,7 @@ function! s:Reset_visual()
     normal 
     call cursor(s:last_trigger_pos)
     call Swatch_load(s:Colors_name(), 'Visual')
-    augroup Swatch
+    augroup Swatch_Cursor
       au!
     augroup END
   endif
@@ -782,8 +795,10 @@ let s:OG_visual_hidef = ['none', '000000', 'ffffff']
 " }}} Backend ❮
 " {{{ Setup ❯
 call Swatch_set_shortcuts([['w','s'],['e','d'],['r','f']])
+call s:Swatch_init()
 nnoremap <leader>ss :call Swatch_make_alteration()<cr>
 nnoremap <leader>pt :call Swatch_preview_this()<cr>
 " }}} Setup ❮
+
 
 " vim:tw=78:ts=2:sw=2:et:fdm=marker:

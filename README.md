@@ -51,8 +51,18 @@ The secound pair maps `<M-R>` to _increase channel 2_ (green), and ... etc.
 So the result in this case looks mostly the same as the diagram above but the keys have all moved right by one column.
 
 ## Variables
+These are the variables exposed to the user, and their default values:
+```
+let g:swatch_step = 5             
+let g:swatch_dir = expand('~/.config/nvim/swatch/')
+let g:swatch_preview_region = 'word'        
+let g:swatch_preview_style = 'bg'
+let g:swatch_enable_on_startup = v:true          
+```
 
 You can change the step that each channel increases/decreases by with the `g:swatch_step` variable, the preview region with `g:swatch_preview_region` (accepted values are: `word`, `WORD`, `para`, `screen`), and the preview attributes with `g:swatch_preview_style` (either `fg`, `bg`, or `both`).
+
+By default the plugin works off of whichever colorscheme you are already using as a base, and on startup applies the changes relative to that base automatically. If you would like to disable the automatic loading of alterations, and instead only have them applied when the `Swatch_load()` function is called, then toggle the startup variable to equal `v:false`.
 
 ## Usage
 ### For altering/making colorschemes
@@ -62,27 +72,9 @@ You can change the location of the swatch directory by putting `:let g:swatch_di
 
 to load alterations to a colorscheme on startup add the line `:call Swatch_load('$name_of_colorscheme')` either instead of, or after calling `:colo $name_of_colorscheme`.
 
-### For working with hexadecimal color codes more generally
-
-previewing and interactively changing color should work straight away.
-
-## How to automatically load your custom colorscheme
-Add this to your .vimrc:
-```
-if exists('*Swatch_load')
-  call Swatch_load()
-else
-  augroup Swatch
-    au! VimEnter * call Swatch_load()
-  augroup END
-endif
-```
-
-Note: users of the lightline plugin may find that this code interferes its intialization process. If you experience difficulties, add the line: `call lightline#enable()` before the line `augroup END`
-
 ## Todos
 
 * implement second mode where the channels correspond to hue/saturation/value
-* add interface for creating folders of swatches and the ability to link to those swatches, and between other groups
+* add interface for designing palettes of swatches, which the user can then link existing highlight groups to freely. (currently only possible to link between existing groups or manually defined ones)
 * fix previewing of named colors with upper case letters in the middle of the word
 * write help file
