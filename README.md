@@ -12,7 +12,16 @@ The easiest way to make your own custom colorschemes. There are other color pick
 * nvim instance capable of displaying true color.
 * an nvim interface that correctly interprets meta key chords (ie. allows mappings like `:nnoremap <M-A> :echo 'hi'<CR>`)
 
-## Default mappings
+## Setup
+Swatch runs automatically on startup, but to ensure that alterations are re-applied when your config files are sourced during usage, add `call Swatch_load()` to your vimrc after specifying a colorscheme.
+
+ie.
+```
+colo gruvbox
+call Swatch_load()
+```
+
+### Default Mappings:
 
 ```
 " New adjustment: identify hl group under cursor and take you to new
