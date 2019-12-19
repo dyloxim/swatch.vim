@@ -582,7 +582,7 @@ endfunction
 " {{{ Preview_value ❯
 function! s:Preview_value(hex, ...)
   let s:OG_visual_hidef = s:Get_attributes_string('Visual')
-  let a:preview_region = get(a:, 1, g:swatch_preview_region)
+  let s:preview_region = get(a:, 1, g:swatch_preview_region)
   let hex = s:Is_color(a:hex) || s:Is_style(a:hex) ? a:hex : '#' . a:hex
   if g:swatch_preview_style == 'fg'
     exe 'hi Visual guifg=' . hex
@@ -593,13 +593,13 @@ function! s:Preview_value(hex, ...)
     exe 'hi Visual guibg=' . hex
   endif
 
-  if a:preview_region =~ 'screen'
+  if s:preview_region =~ 'screen'
     normal! HVL
-  elseif a:preview_region =~ 'para'
+  elseif s:preview_region =~ 'para'
     normal! vap
-  elseif a:preview_region =~ 'WORD'
+  elseif s:preview_region =~ 'WORD'
     normal! viW
-  elseif a:preview_region =~ 'word'
+  elseif s:preview_region =~ 'word'
     normal! viw
   endif
 
